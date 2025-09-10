@@ -71,7 +71,17 @@ def balance_demanda(model, bloque):
     
 
 def max_gen(model, planta, bloque):
-    return model.generacion[planta, bloque] <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion']
+    disponibilidad = 1
+    if planta not in t_centrales:
+        if bloque == 'bloque_1':
+            disponibilidad = dispnibilidad_hidro[0]
+        elif bloque == 'bloque_2':
+            disponibilidad = dispnibilidad_hidro[1]
+        elif bloque == 'bloque_3':
+            disponibilidad = dispnibilidad_hidro[2]
+        return model.generacion[planta, bloque] <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion']*disponibilidad 
+    else:
+        return model.generacion[planta, bloque] <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion']*model.param_centrales[planta]['disponibilidad']
 
 
 model.demanda_constraint = pyo.Constraint(model.BLOQUES, rule=balance_demanda)
