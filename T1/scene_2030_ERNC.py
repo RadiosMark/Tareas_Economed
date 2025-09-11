@@ -197,28 +197,18 @@ model.costo_fallas = pyo.Expression(
     expr=sum(model.falla[bloque] * costo_falla for bloque in model.BLOQUES)
 )
 
-# FUNCION OBJETIVO FINAL
-model.obj = pyo.Objective(
-    expr = model.op_ex + model.op_new + model.inv_new + model.costo_fallas,
-    sense = pyo.minimize
-)
-
-# Si quieres traer todo a valor presente 2016, usa esto:
-""" 
-# tasa para traer 2030 a 2016 (elige la de la pauta)
-r_df = 0.05  # ej.
+# Conversion a factor de descuento
+r_df = 0.01 
 
 # factor de descuento de 2016 a 2030
-df_2016_2030 = 1 / (1 + r_df)**(2030 - 2016)
+df_2016_2030 = 1 / (1 + r_df)**(year)
 
-# si ya definiste:
-# model.op_ex, model.op_new, model.inv_new, model.costo_fallas (pyo.Expression)
 
+# FUNCION OBJETIVO FINAL
 model.obj = pyo.Objective(
     expr = df_2016_2030 * (model.op_ex + model.op_new + model.inv_new + model.costo_fallas),
     sense = pyo.minimize
 )
- """
 
 #%%
 
