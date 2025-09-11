@@ -5,10 +5,9 @@ import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 
 tolerancia = 0.00001
-perdida = 0.004
+perdida = 0.04
 
 #%%
-
 
 # Leer el archivo CSV
 df_centrales_ex = pd.read_csv('centrales_ex.csv')
@@ -16,7 +15,6 @@ df_centrales_ex = df_centrales_ex.fillna(0)
 
 df_centrales_nuevas = pd.read_csv('centrales_n.csv')
 df_centrales_nuevas = df_centrales_nuevas.fillna(0)
-
 
 #%%
 
@@ -51,13 +49,15 @@ dic_bloques = {'bloque_1': {'duracion': 12000 , 'demanda' : 10033.21303},
 
 #%%
 
+# MODELO
 model = pyo.ConcreteModel()
 
-# Definir un conjunto simple
+# CONJUNTOS
 model.CENTRALES = pyo.Set(initialize=index_plantas)
 model.CENTRALES_NUEVAS = pyo.Set(initialize=index_plantas_nuevas)
 model.BLOQUES = pyo.Set(initialize=['bloque_1','bloque_2','bloque_3'])
 
+# PARAMETROS
 model.param_centrales = pyo.Param(model.CENTRALES,
                                   initialize=param_centrales.to_dict(orient='index'),
                                   within=pyo.Any)
@@ -68,86 +68,118 @@ model.param_centrales_nuevas = pyo.Param(model.CENTRALES_NUEVAS,
 
 model.param_bloques = pyo.Param(model.BLOQUES, initialize=dic_bloques, within=pyo.Any)
 
+# VARIABLES
+
 model.generacion_ex = pyo.Var(model.CENTRALES, model.BLOQUES, within=pyo.NonNegativeReals)
 model.generacion_nuevas = pyo.Var(model.CENTRALES_NUEVAS, model.BLOQUES, within=pyo.NonNegativeReals)
 model.potencia_in_nuevas = pyo.Var(model.CENTRALES_NUEVAS, within=pyo.NonNegativeReals)
 model.falla = pyo.Var(model.BLOQUES, within=pyo.NonNegativeReals)
 
+#%%
 
-# Funciones de restricción
+
+# RESTRICCIONES
+
+########### DEMANDA ###########
+def fd_hidro(bloque):
+    return dispnibilidad_hidro[0] if bloque == 'bloque_1' else \
+           dispnibilidad_hidro[1] if bloque == 'bloque_2' else \
+           dispnibilidad_hidro[2]
+
 def balance_demanda(model, bloque):
-    sum_centrales_ex = 0
-    sum_centrales_nuevas = 0
+    # Energía neta generada por existentes y nuevas (sin disponibilidad ni eficiencia)
+    gen_ex   = sum(model.generacion_ex[planta, bloque]   for planta in model.CENTRALES)
+    gen_new  = sum(model.generacion_nuevas[planta, bloque] for planta in model.CENTRALES_NUEVAS)
 
-    for planta in model.CENTRALES:
-        if planta in t_centrales:
-            # si el profe se digna a poner bien las weas esta linea se cambia por otra cosa, no se estoy cansado
-            sum_centrales_ex += model.generacion[planta, bloque] * model.param_centrales[planta]['eficiencia']
-        else:
-            if bloque == 'bloque_1':
-                sum_centrales_ex += model.generacion[planta, bloque] * dispnibilidad_hidro[0]
-            elif bloque == 'bloque_2':
-                sum_centrales_ex += model.generacion[planta, bloque] * dispnibilidad_hidro[1]
-            elif bloque == 'bloque_3':
-                sum_centrales_ex += model.generacion[planta, bloque] * dispnibilidad_hidro[2]
-    
-    for planta in model.CENTRALES_NUEVAS:
-        if planta in t_centrales:
-            sum_centrales_nuevas += model.generacion_nuevas[planta, bloque] * model.param_centrales_nuevas[planta]['eficiencia']
-        else:
-            if bloque == 'bloque_1':
-                sum_centrales_nuevas += model.generacion_nuevas[planta, bloque] * dispnibilidad_hidro[0]
-            elif bloque == 'bloque_2':
-                sum_centrales_nuevas += model.generacion_nuevas[planta, bloque] * dispnibilidad_hidro[1]
-            elif bloque == 'bloque_3':
-                sum_centrales_nuevas += model.generacion_nuevas[planta, bloque] * dispnibilidad_hidro[2]
+    return (gen_ex + gen_new + model.falla[bloque]) * (1/(1+perdida)) \
+       >= model.param_bloques[bloque]['demanda'] * model.param_bloques[bloque]['duracion']
 
-    return (sum_centrales_ex + model.falla[bloque])*(1/(1+perdida)) >= model.param_bloques[bloque]['demanda']*model.param_bloques[bloque]['duracion']
-    
+
+############ MÁXIMA GENERACIÓN ###########
+
 def max_gen_ex(model, planta, bloque):
-    disponibilidad = 1
-    if planta not in t_centrales:
-        if bloque == 'bloque_1':
-            disponibilidad = dispnibilidad_hidro[0]
-        elif bloque == 'bloque_2':
-            disponibilidad = dispnibilidad_hidro[1]
-        elif bloque == 'bloque_3':
-            disponibilidad = dispnibilidad_hidro[2]
-        return model.generacion[planta, bloque] <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion']*disponibilidad 
+    tec = model.param_centrales[planta]['tecnologia']
+    if tec in ['hidro', 'hidro_conv', 'minihidro']:
+        disp = fd_hidro(bloque)
     else:
-        return model.generacion[planta, bloque] <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion']*model.param_centrales[planta]['disponibilidad']
+        disp = model.param_centrales[planta]['disponibilidad']
+    return model.generacion_ex[planta, bloque] \
+           <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion'] * disp
 
 def max_gen_nuevas(model, planta, bloque):
-    disponibilidad = 1
-    if planta not in t_centrales:
-        if bloque == 'bloque_1':
-            disponibilidad = dispnibilidad_hidro[0]
-        elif bloque == 'bloque_2':
-            disponibilidad = dispnibilidad_hidro[1]
-        elif bloque == 'bloque_3':
-            disponibilidad = dispnibilidad_hidro[2]
-        return model.generacion_nuevas[planta, bloque] <= model.potencia_in_nuevas[planta] * model.param_bloques[bloque]['duracion']*disponibilidad
+    tec = model.param_centrales_nuevas[planta]['tecnologia']
+    if tec in ['hidro', 'hidro_conv', 'minihidro']:
+        disp = fd_hidro(bloque)
     else:
-        return model.generacion_nuevas[planta, bloque] <= model.potencia_in_nuevas[planta] * model.param_bloques[bloque]['duracion']*model.param_centrales_nuevas[planta]['disponibilidad']
+        disp = model.param_centrales_nuevas[planta]['disponibilidad']
+    return model.generacion_nuevas[planta, bloque] \
+           <= model.potencia_in_nuevas[planta] * model.param_bloques[bloque]['duracion'] * disp
 
+############ MÁXIMA CAPACIDAD INSTALADA NUEVAS ###########
 def max_capacidad_nuevas(model, planta):
-    if planta in t_ernc:
-        return model.potencia_in_nuevas[planta] <= model.param_centrales_nuevas[planta]['maxima_restriccion_2030_MW']
+    tec = model.param_centrales_nuevas[planta]['tecnologia']
+    if tec in t_ernc:
+        limite = model.param_centrales_nuevas[planta]['maxima_restriccion_2030_MW']
+        # Si quieres que “0” signifique “sin límite”, puedes saltarte solo si limite <= 0
+        return model.potencia_in_nuevas[planta] <= limite if limite > 0 else pyo.Constraint.Skip
     else:
         return pyo.Constraint.Skip
 
-# Agregar las restricciones al modelo
+def anualidad(r, n):
+    return r / (1 - (1 + r)**(-n))
+
+
+# Restricciones al modelo
 model.demanda_constraint = pyo.Constraint(model.BLOQUES, rule=balance_demanda)
 model.max_gen_constraint = pyo.Constraint(model.CENTRALES, model.BLOQUES, rule=max_gen_ex)
 model.max_gen_nuevas_constraint = pyo.Constraint(model.CENTRALES_NUEVAS, model.BLOQUES, rule=max_gen_nuevas)
 model.max_capacidad_nuevas_constraint = pyo.Constraint(model.CENTRALES_NUEVAS, rule=max_capacidad_nuevas)
 
-# Función objetivo
-model.obj = pyo.Objective(expr=sum(model.generacion[planta, bloque] *(model.param_centrales[planta]['costo_variable_nc']+model.param_centrales[planta]['costo_variable_t']) 
-                                  for planta in model.CENTRALES for bloque in model.BLOQUES) +
-                           sum(model.falla[bloque] * costo_falla
-                                  for bloque in model.BLOQUES), sense=pyo.minimize)
+# FUNCION OBJETIVO
 
+# operación EXISTENTES
+model.op_ex = pyo.Expression(
+    expr=sum(
+        model.generacion_ex[planta, bloque] *
+        (model.param_centrales[planta]['costo_variable_nc'] +
+         model.param_centrales[planta]['costo_variable_t'])
+        for planta in model.CENTRALES
+        for bloque in model.BLOQUES
+    )
+)
+
+# operación NUEVAS
+model.op_new = pyo.Expression(
+    expr=sum(
+        model.generacion_nuevas[planta, bloque] *
+        (model.param_centrales_nuevas[planta]['cvnc_usd_MWh'] +
+         model.param_centrales_nuevas[planta]['linea_peaje_usd_MWh'])
+        for planta in model.CENTRALES_NUEVAS
+        for bloque in model.BLOQUES
+    )
+)
+
+# inversión NUEVAS (MW→kW * anualidad * CAPEX)
+model.inv_new = pyo.Expression(
+    expr=sum(
+        model.potencia_in_nuevas[planta] * 1000 *
+        anualidad(model.param_centrales_nuevas[planta]['tasa_descuento'],
+                  model.param_centrales_nuevas[planta]['vida_util_anos']) *
+        model.param_centrales_nuevas[planta]['inversion_usd_kW_neto']
+        for planta in model.CENTRALES_NUEVAS
+    )
+)
+
+# costo FALLAS
+model.costo_fallas = pyo.Expression(
+    expr=sum(model.falla[bloque] * costo_falla for bloque in model.BLOQUES)
+)
+
+# FUNCION OBJETIVO FINAL
+model.obj = pyo.Objective(
+    expr = model.op_ex + model.op_new + model.inv_new + model.costo_fallas,
+    sense = pyo.minimize
+)
 
 #%%
 
@@ -155,7 +187,6 @@ model.obj = pyo.Objective(expr=sum(model.generacion[planta, bloque] *(model.para
 solver = pyo.SolverFactory('highs')
 
 solver.options['mip_rel_gap'] = tolerancia
-
 
 results = solver.solve(model, tee=True)
 
