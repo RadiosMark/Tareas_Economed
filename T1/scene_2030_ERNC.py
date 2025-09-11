@@ -27,7 +27,7 @@ param_centrales_nuevas = df_centrales_nuevas.set_index(['planta_n'])
 t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'eolica','solar', 'geotermia']
 
 # Centrales renovables
-t_ernc = ['eolica','solar', 'geotermia','minihidro', 'hidro_conv']
+t_ernc = ['eolica','solar', 'geotermia','minihidro', 'hidro_conv', 'biomasa']
 
 # Para la modelación de la hidroelectricidad
 dispnibilidad_hidro = [0.8215,0.6297,0.561]
@@ -129,11 +129,33 @@ def anualidad(r, n):
     return r / (1 - (1 + r)**(-n))
 
 
+############ META ENERGIAS RENOVABLES ###########
+def meta_ernc_rule(model):
+    # energía total (existentes + nuevas)
+    gen_total = (
+        sum(model.generacion_ex[planta,bloque]   for planta in model.CENTRALES        for bloque in model.BLOQUES) +
+        sum(model.generacion_nuevas[planta,bloque] for planta in model.CENTRALES_NUEVAS for bloque in model.BLOQUES)
+    )
+
+    # energía ERNC (existentes + nuevas)
+    gen_ernc = (
+        sum(model.generacion_ex[planta,bloque]     for planta in model.CENTRALES
+                                         if model.param_centrales[planta]['tecnologia'] in t_ernc
+                                         for bloque in model.BLOQUES) +
+        sum(model.generacion_nuevas[planta,bloque] for planta in model.CENTRALES_NUEVAS
+                                         if model.param_centrales_nuevas[planta]['tecnologia'] in t_ernc
+                                         for bloque in model.BLOQUES)
+    )
+
+    return gen_ernc >= 0.30 * gen_total
+
+
 # Restricciones al modelo
 model.demanda_constraint = pyo.Constraint(model.BLOQUES, rule=balance_demanda)
 model.max_gen_constraint = pyo.Constraint(model.CENTRALES, model.BLOQUES, rule=max_gen_ex)
 model.max_gen_nuevas_constraint = pyo.Constraint(model.CENTRALES_NUEVAS, model.BLOQUES, rule=max_gen_nuevas)
 model.max_capacidad_nuevas_constraint = pyo.Constraint(model.CENTRALES_NUEVAS, rule=max_capacidad_nuevas)
+model.meta_ernc = pyo.Constraint(rule=meta_ernc_rule)
 
 # FUNCION OBJETIVO
 
@@ -181,7 +203,7 @@ model.obj = pyo.Objective(
     sense = pyo.minimize
 )
 
-# Si quieres traer todo a valor presente 2016, puedes usar este bloque:
+# Si quieres traer todo a valor presente 2016, usa esto:
 """ 
 # tasa para traer 2030 a 2016 (elige la de la pauta)
 r_df = 0.05  # ej.
@@ -196,8 +218,8 @@ model.obj = pyo.Objective(
     expr = df_2016_2030 * (model.op_ex + model.op_new + model.inv_new + model.costo_fallas),
     sense = pyo.minimize
 )
-
  """
+
 #%%
 
 # Resolver el modelo
@@ -209,8 +231,6 @@ results = solver.solve(model, tee=True)
 
 # Ver resultados
 print(f"Status: {results}")
-
-
 
 # %%
 
