@@ -205,11 +205,36 @@ print(f"Status: {results}")
 
 # %%
 
+print(f'         ######################################################## \n \
+        ################# Generación Existente ################# \n \
+        ########################################################')
+
 # Ver los resultados de la generación
 for planta in model.CENTRALES:
     for bloque in model.BLOQUES:
-        print(f'Generación de {planta} en {bloque}: {model.generacion[planta, bloque].value}')
+        print(f'Generación de {planta} en {bloque}: {model.generacion_ex[planta, bloque].value}')
 
+
+print(f'         ##################################################### \n \
+        ################# Generación Nuevas ################# \n \
+        #####################################################')
+
+
+# Ver los resultados de la generación
+for planta in model.CENTRALES_NUEVAS:
+    print(f'Capacidad instalada de {planta}: {model.potencia_in_nuevas[planta].value}')
+    for bloque in model.BLOQUES:
+        print(f'Generación de {planta} en {bloque}: {model.generacion_nuevas[planta, bloque].value}')
+
+
+print(f'         ##################################################### \n \
+        ################# Potencia Instalada Nuevas ######### \n \
+        #####################################################')
+
+
+# Ver los resultados de la generación
+for planta in model.CENTRALES_NUEVAS:
+    print(f'Capacidad instalada de {planta}: {model.potencia_in_nuevas[planta].value}')
 
 
 # %%
