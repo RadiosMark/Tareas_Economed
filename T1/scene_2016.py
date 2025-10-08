@@ -20,7 +20,7 @@ param_centrales = df_centrales_ex.set_index(['planta_n'])
 #%%
 
 # Tipos de Centrales
-t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'eolica','solar', 'geotermia']
+t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'hidro', 'hidro_conv', 'minihidro','eolica','solar', 'geotermia']
 
 # Para la modelación de la hidroelectricidad
 dispnibilidad_hidro = [0.8215,0.6297,0.561]
@@ -30,7 +30,7 @@ costo_falla = 505.5 # mills/kWh = USD/MWh
 #%%
 
 index_plantas = param_centrales.index.tolist()
-dic_bloques = {'bloque_1': {'duracion': 12000 , 'demanda' : 7756},
+dic_bloques = {'bloque_1': {'duracion': 1200 , 'demanda' : 7756},
                'bloque_2': {'duracion': 4152 , 'demanda' : 5966}, 
                'bloque_3': {'duracion': 3408 , 'demanda' : 4773}}
 
@@ -64,25 +64,25 @@ def fd_hidro(bloque):
            dispnibilidad_hidro[2]
 
 def balance_demanda(model, bloque):
-    # Energía neta generada (todas las tecnologías)
+    # Energía neta generada (todas las tecnologías) multiplicado por su factor de planta
     suma = sum(model.generacion[planta, bloque] for planta in model.CENTRALES)
 
     # Opción B (si quieres aplicar pérdidas también a la falla):
-    return (suma + model.falla[bloque])*(1/(1+perdida)) \
-                        >= model.param_bloques[bloque]['demanda'] * model.param_bloques[bloque]['duracion']
+    return (suma + model.falla[bloque])*(1000/(1+perdida)) >= model.param_bloques[bloque]['demanda'] * model.param_bloques[bloque]['duracion']
 
 def max_gen(model, planta, bloque):
     tec = model.param_centrales[planta]['tecnologia']
+    efi = 1.0
     if tec in ['hidro', 'hidro_conv', 'minihidro']:
         disp = fd_hidro(bloque)
     else:
         # cuidado: si del CSV vino 0 por fillna, usa 1.0 como fallback
         disp = model.param_centrales[planta]['disponibilidad'] or 1.0
+        efi = model.param_centrales[planta]['eficiencia'] or 1.0
         #disp = disp_val if disp_val not in (None, 0) else 1.0  # fallback solo si está vacío/0
 
-    return model.generacion[planta, bloque] \
-           <= model.param_centrales[planta]['potencia_neta_mw'] \
-              * model.param_bloques[bloque]['duracion'] * disp
+        # generacion está en GWh (multiplicamos por 1000  para hacer el cambio a MWh), potencia_neta_mw en MW, duracion en horas
+    return model.generacion[planta, bloque]*1000 <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion'] * disp
 
 
 # Restricciones al modelo
@@ -94,8 +94,8 @@ model.max_gen_constraint = pyo.Constraint(model.CENTRALES, model.BLOQUES, rule=m
 model.costo_op_ex = pyo.Expression(
     expr=sum(
         model.generacion[planta, bloque] *
-        (model.param_centrales[planta]['costo_variable_nc'] +
-         model.param_centrales[planta]['costo_variable_t'])
+        (model.param_centrales[planta]['costo_variable_nc'] )
+        #+model.param_centrales[planta]['costo_variable_t'])
         for planta in model.CENTRALES 
         for bloque in model.BLOQUES
     )
@@ -128,11 +128,31 @@ print(f"Status: {results}")
 
 # %%
 
-# Ver los resultados de la generación
-for planta in model.CENTRALES:
-    for bloque in model.BLOQUES:
-        print(f'Generación de {planta} en {bloque}: {model.generacion[planta, bloque].value}')
+# Ver los resultados de la generación por planta sumando los 3 bloques
+# en el formato Tipo | Ubicacion | Generacion total
+""" for planta in model.CENTRALES:
+    gen_total = sum(model.generacion[planta, bloque].value for bloque in model.BLOQUES)
+    print(f'Generación total de {planta}: {gen_total} GWh')
+ """
+# %%
+# ver resultados por tipo de central
+for tec in t_centrales:
+    gen_tec = sum(model.generacion[planta, bloque].value 
+                  for planta in model.CENTRALES if model.param_centrales[planta]['tecnologia'] == tec
+                  for bloque in model.BLOQUES)
+    print(f'Generación total de tecnología {tec}: {gen_tec} GWh')
 
+#%%
+
+#sumatoria todas las generaciones
+total = 0
+for bloque in model.BLOQUES:
+    gen_bloque = sum(model.generacion[planta, bloque].value for planta in model.CENTRALES)
+    falla_bloque = model.falla[bloque].value
+    print(f'Generación total en {bloque}: {gen_bloque} GWh, Falla: {falla_bloque} GWh')
+    total += gen_bloque + falla_bloque
+
+print(f'Generación total en el sistema (incluyendo fallas): {total} GWh')
 
 
 # %%

@@ -1,0 +1,21 @@
+planta_n,tecnologia,ubicacion,inversion_usd_kW_neto,vida_util_anos,tasa_descuento,linea_peaje_usd_MWh,eficiencia,cvnc_usd_MWh,disponibilidad,maxima_restriccion_2030_MW
+planta_1,carbon,diego de Almagro,2300,30,0.10,10.0,0.38,2.0,0.88,
+planta_2,carbon,huasco,2300,30,0.10,5.0,0.38,2.0,0.88,
+planta_3,carbon,quillota,2300,30,0.10,0.3,0.38,2.0,0.88,
+planta_4,carbon,RM,2300,30,0.10,0.3,0.38,2.0,0.88,
+planta_5,carbon,coronel,2300,30,0.10,3.0,0.38,2.0,0.88,
+planta_6,carbon,puerto_montt,2300,30,0.10,5.0,0.38,2.0,0.88,
+planta_7,cc-gnl,quillota,1000,25,0.10,0.3,0.45,3.4,0.93,
+planta_8,hidro_conv,charrua,3000,40,0.10,10.0,,0.0,0.6,1500 
+planta_9,eolica,huasco,1800,20,0.10,5.0,,8.0,0.35,500 
+planta_10,eolica,huasco,1800,20,0.10,5.0,,8.0,0.3,500
+planta_11,solar,huasco,1500,20,0.10,5.0,,10.0,0.35,500
+planta_12,solar,huasco,1500,20,0.10,5.0,,10.0,0.3,500
+planta_13,geotermia,diego_de_almagro,4000,20,0.10,20.0,,20.0,0.8,200
+planta_14,minihidro,charrua,3000,40,0.10,20.0,,0.0,0.6,500
+planta_15,petroleo_diesel,diego_de_almagro,700,20,0.10,10.0,0.30,12.0,0.8,
+planta_16,petroleo_diesel,huasco,700,20,0.10,5.0,0.30,12.0,0.8,
+planta_17,petroleo_diesel,quillota,700,20,0.10,0.3,0.30,12.0,0.8,
+planta_18,petroleo_diesel,RM,700,20,0.10,0.3,0.30,12.0,0.8,
+planta_19,petroleo_diesel,coronel,700,20,0.10,3.0,0.30,12.0,0.8,
+planta_20,petroleo_diesel,puerto_montt,700,20,0.10,5.0,0.30,12.0,0.8,
