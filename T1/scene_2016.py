@@ -67,7 +67,6 @@ def balance_demanda(model, bloque):
     # Energía neta generada (todas las tecnologías) multiplicado por su factor de planta
     suma = sum(model.generacion[planta, bloque] for planta in model.CENTRALES)
 
-    # Opción B (si quieres aplicar pérdidas también a la falla):
     return (suma + model.falla[bloque])*(1000/(1+perdida)) >= model.param_bloques[bloque]['demanda'] * model.param_bloques[bloque]['duracion']
 
 def max_gen(model, planta, bloque):
@@ -76,10 +75,8 @@ def max_gen(model, planta, bloque):
     if tec in ['hidro', 'hidro_conv', 'minihidro']:
         disp = fd_hidro(bloque)
     else:
-        # cuidado: si del CSV vino 0 por fillna, usa 1.0 como fallback
         disp = model.param_centrales[planta]['disponibilidad'] or 1.0
         efi = model.param_centrales[planta]['eficiencia'] or 1.0
-        #disp = disp_val if disp_val not in (None, 0) else 1.0  # fallback solo si está vacío/0
 
         # generacion está en GWh (multiplicamos por 1000  para hacer el cambio a MWh), potencia_neta_mw en MW, duracion en horas
     return model.generacion[planta, bloque]*1000 <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion'] * disp
@@ -90,10 +87,10 @@ model.demanda_constraint = pyo.Constraint(model.BLOQUES, rule=balance_demanda)
 model.max_gen_constraint = pyo.Constraint(model.CENTRALES, model.BLOQUES, rule=max_gen)
 
 
-# operación EXISTENTES
+# operación EXISTENTES  (recordar que generacion está en GWh)
 model.costo_op_ex = pyo.Expression(
     expr=sum(
-        model.generacion[planta, bloque] *
+        model.generacion[planta, bloque] * 1000 * # pasamos a MWh
         (model.param_centrales[planta]['costo_variable_nc'] )
         #+model.param_centrales[planta]['costo_variable_t'])
         for planta in model.CENTRALES 
@@ -101,9 +98,10 @@ model.costo_op_ex = pyo.Expression(
     )
 )
 
-# costo FALLAS
+# costo FALLAS (recordar que falla está en GWh)
 model.costo_fallas = pyo.Expression(
-    expr=sum(model.falla[bloque] * costo_falla for bloque in model.BLOQUES)
+    expr=sum(model.falla[bloque] * 1000 * # pasamos a MWh
+             costo_falla for bloque in model.BLOQUES)
 )
 
 # FUNCION OBJETIVO FINAL
