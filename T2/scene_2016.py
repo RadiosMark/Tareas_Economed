@@ -1,0 +1,156 @@
+#%% Importar librerías
+import pandas as pd
+import highspy as hgs
+import pyomo.environ as pyo
+from pyomo.opt import SolverFactory
+
+tolerancia = 0.00001
+perdida = 0.04
+
+#%%
+
+# Leer el archivo CSV
+df_centrales_ex = pd.read_csv('centrales_ex.csv')
+df_centrales_ex = df_centrales_ex.fillna(0)
+
+#%%
+
+param_centrales = df_centrales_ex.set_index(['planta_n'])
+
+#%%
+
+# Tipos de Centrales
+t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'hidro', 'hidro_conv', 'minihidro','eolica','solar', 'geotermia']
+
+# Para la modelación de la hidroelectricidad
+dispnibilidad_hidro = [0.8215,0.6297,0.561]
+
+costo_falla = 505.5 # mills/kWh = USD/MWh
+
+#%%
+
+index_plantas = param_centrales.index.tolist()
+dic_bloques = {'bloque_1': {'duracion': 1200 , 'demanda' : 7756},
+               'bloque_2': {'duracion': 4152 , 'demanda' : 5966}, 
+               'bloque_3': {'duracion': 3408 , 'demanda' : 4773}}
+
+#%%
+
+# MODELO
+model = pyo.ConcreteModel()
+
+# CONJUNTOS
+
+model.CENTRALES = pyo.Set(initialize=index_plantas)
+model.BLOQUES = pyo.Set(initialize=['bloque_1','bloque_2','bloque_3'])
+
+# PARAMETROS
+model.param_centrales = pyo.Param(model.CENTRALES,
+                                  initialize=param_centrales.to_dict(orient='index'),
+                                  within=pyo.Any)
+
+model.param_bloques = pyo.Param(model.BLOQUES, initialize=dic_bloques, within=pyo.Any)
+
+# VARIABLES
+
+model.generacion = pyo.Var(model.CENTRALES, model.BLOQUES, within=pyo.NonNegativeReals) 
+model.falla = pyo.Var(model.BLOQUES, within=pyo.NonNegativeReals)
+
+# RESTRICCIONES
+
+def fd_hidro(bloque):
+    return dispnibilidad_hidro[0] if bloque == 'bloque_1' else \
+           dispnibilidad_hidro[1] if bloque == 'bloque_2' else \
+           dispnibilidad_hidro[2]
+
+def balance_demanda(model, bloque):
+    # Energía neta generada (todas las tecnologías) multiplicado por su factor de planta
+    suma = sum(model.generacion[planta, bloque] for planta in model.CENTRALES)
+
+    return (suma + model.falla[bloque])*(1000/(1+perdida)) >= model.param_bloques[bloque]['demanda'] * model.param_bloques[bloque]['duracion']
+
+def max_gen(model, planta, bloque):
+    tec = model.param_centrales[planta]['tecnologia']
+    efi = 1.0
+    if tec in ['hidro', 'hidro_conv', 'minihidro']:
+        disp = fd_hidro(bloque)
+    else:
+        disp = model.param_centrales[planta]['disponibilidad'] or 1.0
+        efi = model.param_centrales[planta]['eficiencia'] or 1.0
+
+        # generacion está en GWh (multiplicamos por 1000  para hacer el cambio a MWh), potencia_neta_mw en MW, duracion en horas
+    return model.generacion[planta, bloque]*1000 <= model.param_centrales[planta]['potencia_neta_mw'] * model.param_bloques[bloque]['duracion'] * disp
+
+
+# Restricciones al modelo
+model.demanda_constraint = pyo.Constraint(model.BLOQUES, rule=balance_demanda)
+model.max_gen_constraint = pyo.Constraint(model.CENTRALES, model.BLOQUES, rule=max_gen)
+
+
+# operación EXISTENTES  (recordar que generacion está en GWh)
+model.costo_op_ex = pyo.Expression(
+    expr=sum(
+        model.generacion[planta, bloque] * 1000 * # pasamos a MWh
+        (model.param_centrales[planta]['costo_variable_nc'] )
+        #+model.param_centrales[planta]['costo_variable_t'])
+        for planta in model.CENTRALES 
+        for bloque in model.BLOQUES
+    )
+)
+
+# costo FALLAS (recordar que falla está en GWh)
+model.costo_fallas = pyo.Expression(
+    expr=sum(model.falla[bloque] * 1000 * # pasamos a MWh
+             costo_falla for bloque in model.BLOQUES)
+)
+
+# FUNCION OBJETIVO FINAL
+model.obj = pyo.Objective(
+    expr = model.costo_op_ex + model.costo_fallas,
+    sense = pyo.minimize
+)
+
+
+#%%
+
+# Resolver el modelo
+solver = pyo.SolverFactory('highs')
+
+solver.options['mip_rel_gap'] = tolerancia
+
+
+results = solver.solve(model, tee=True)
+
+# Ver resultados
+print(f"Status: {results}")
+
+# %%
+
+# Ver los resultados de la generación por planta sumando los 3 bloques
+# en el formato Tipo | Ubicacion | Generacion total
+""" for planta in model.CENTRALES:
+    gen_total = sum(model.generacion[planta, bloque].value for bloque in model.BLOQUES)
+    print(f'Generación total de {planta}: {gen_total} GWh')
+ """
+# %%
+# ver resultados por tipo de central
+for tec in t_centrales:
+    gen_tec = sum(model.generacion[planta, bloque].value 
+                  for planta in model.CENTRALES if model.param_centrales[planta]['tecnologia'] == tec
+                  for bloque in model.BLOQUES)
+    print(f'Generación total de tecnología {tec}: {gen_tec} GWh')
+
+#%%
+
+#sumatoria todas las generaciones
+total = 0
+for bloque in model.BLOQUES:
+    gen_bloque = sum(model.generacion[planta, bloque].value for planta in model.CENTRALES)
+    falla_bloque = model.falla[bloque].value
+    print(f'Generación total en {bloque}: {gen_bloque} GWh, Falla: {falla_bloque} GWh')
+    total += gen_bloque + falla_bloque
+
+print(f'Generación total en el sistema (incluyendo fallas): {total} GWh')
+
+
+# %%
