@@ -6,11 +6,11 @@ planta_4,carbon,RM,2300,30,0.10,0.3,0.38,2.0,0.88,,22.44736842
 planta_5,carbon,coronel,2300,30,0.10,3.0,0.38,2.0,0.88,,22.44736842
 planta_6,carbon,puerto_montt,2300,30,0.10,5.0,0.38,2.0,0.88,,22.44736842
 planta_7,cc-gnl,quillota,1000,25,0.10,0.3,0.45,3.4,0.93,,60.65777778
-planta_8,hidro_conv,charrua,3000,40,0.10,10.0,,0.0,0.6,1500,
+planta_8,hidro,charrua,3000,40,0.10,10.0,,0.0,0.6,1500,
 planta_9,eolica,huasco,1800,20,0.10,5.0,,8.0,0.35,500,
-planta_10,eolica,huasco,1800,20,0.10,5.0,,8.0,0.3,500,
+planta_10,eolica,huasco,1800,20,0.10,5.0,,8.0,0.3,,
 planta_11,solar,huasco,1500,20,0.10,5.0,,10.0,0.35,500,
-planta_12,solar,huasco,1500,20,0.10,5.0,,10.0,0.3,500,
+planta_12,solar,huasco,1500,20,0.10,5.0,,10.0,0.3,,
 planta_13,geotermia,diego_de_almagro,4000,20,0.10,20.0,,20.0,0.8,200,
 planta_14,minihidro,charrua,3000,40,0.10,20.0,,0.0,0.6,500,
 planta_15,petroleo_diesel,diego_de_almagro,700,20,0.10,10.0,0.30,12.0,0.8,,147.8533333
