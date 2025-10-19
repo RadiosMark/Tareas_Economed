@@ -174,7 +174,7 @@ model.costo_social_sox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_
 model.costo_social_nox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Nox($/ton)'])
 model.costo_social_co2 = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Co2($/ton)'])
 
-# --- INICIO DE LA LÓGICA DE CONVERSIÓN DE UNIDADES Y CÁLCULO DE NORMA ---
+# --- CONVERSIÓN DE UNIDADES Y CÁLCULO DE NORMA ---
 
 # 1. Poder Calorífico (calculado desde tu tabla "Caja Mágica")
 poder_calorifico = {
@@ -432,8 +432,6 @@ def costo_fijo(m):
                 total_fijo += potencia_instalada_kw * costo_fijo_total_combinacion * anualizacion
     
     return total_fijo
-
-# --- AÑADE ESTA NUEVA FUNCIÓN A TU CÓDIGO ---
 
 # Costo Social por Contaminación
 def costo_social(m):
