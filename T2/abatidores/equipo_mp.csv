@@ -1,4 +1,4 @@
 Equipo_MP,Eficiencia_(p.u.),Inversión_($/kW),Costo_variable_($/MWh)
-MP-1,0.90,116,1.5
-MP-2,0.98,158,2.0
-MP-3,0.99,274,2.0
+mp-1,0.90,116,1.5
+mp-2,0.98,158,2.0
+mp-3,0.99,274,2.0
