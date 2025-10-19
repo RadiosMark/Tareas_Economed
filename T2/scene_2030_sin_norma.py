@@ -76,7 +76,7 @@ def fd_hidro(bloque):
 def anualidad(r, n): # r es tasa de descuento, n es vida util en años
     return r / (1 - (1 + r)**(-n))
 
-# Leer el archivo 'datos_t2.xlsx', hoja 'existentes', rango 'E7:X2695'
+# Leer el archivo 'datos_t2.xlsx', hoja 'existentes', rango 'E7:AB2695'
 excel_path = 'datos_t2.xlsx'
 df_existentes = excel_range_to_df(excel_path, sheet='existentes', cell_range='E7:AB2695', header=0)
 
@@ -116,10 +116,7 @@ Obtengo esto
  'CS_Nox($/ton)',
  'CS_Co2($/ton)'] """
 
-# %%
-
-# --- 1. CARGA DE DATOS (Tu código actual) ---
-# (Asumiendo que df_existentes ya está cargado y es correcto)
+# --- 1. CARGA DE DATOS ---
 CONJ = df_existentes.set_index('id_combinacion').to_dict(orient='index')
 CONJ_C = df_existentes['id_centralcomb'].unique().tolist()
 
@@ -249,7 +246,6 @@ def potencia_existente(m, c):
     if math.isnan(pot_neta):
         return pyo.Constraint.Skip
     else:
-        # CORRECCIÓN: Usar la variable 'pot_neta' directamente
         return sum(m.P[i] for i in combinaciones_de_c) == pot_neta
 
 # Restriccion 3: Dispobibilidad Técnica (maxima generacion)
@@ -260,7 +256,7 @@ def disponibilidad_tecnica(m, c, b):
     if m.tecnologia[primer_i] == 'central_falla':
         return pyo.Constraint.Skip
 
-    if m.tecnologia[primer_i] in ['hidro', 'hidro_conv', 'minihidro']: # Usar 'in' para listas
+    if m.tecnologia[primer_i] in ['hidro', 'hidro_conv', 'minihidro']:
         disp = fd_hidro(b)
     else:
         disp = m.disponibilidad[primer_i]
@@ -274,11 +270,10 @@ def disponibilidad_tecnica(m, c, b):
 def capacidad_por_central(m, c):
     combinaciones_de_c = MAPEO_C_a_I[c] # equivalente a i = 64 * (c - 1) + 1 
     primer_i = combinaciones_de_c[0]
-    pot_max = m.potencia_max[primer_i] # Obtener el valor primero
+    pot_max = m.potencia_max[primer_i] 
     if math.isnan(pot_max):
         return pyo.Constraint.Skip
     else:
-        # CORRECCIÓN: Usar la variable 'pot_max'
         return sum(m.P[i] for i in combinaciones_de_c) <= pot_max
 
 # Restrccion 5.1 : Norma de Emisión NOx
@@ -300,7 +295,6 @@ def norma_emision_nox(m,i,b):
         if norma == float('inf') or efi_calor <= 0:
             return pyo.Constraint.Skip 
         else:
-            # El resto de la restricción está perfecto, las unidades ya son consistentes
             energia_combustible = m.E[i,b] / efi_calor
             return energia_combustible * norma >= energia_combustible * ed * (1 - efi_aba)
     else:
@@ -324,7 +318,6 @@ def norma_emision_sox(m,i,b):
         if norma == float('inf') or efi_calor <= 0:
             return pyo.Constraint.Skip 
         else:
-            # El resto de la restricción está perfecto, las unidades ya son consistentes
             energia_combustible = m.E[i,b] / efi_calor
             return energia_combustible * norma >= energia_combustible * ed * (1 - efi_aba)
     else:
@@ -347,7 +340,6 @@ def norma_emision_mp(m,i,b):
         if norma == float('inf') or efi_calor <= 0:
             return pyo.Constraint.Skip 
         else:
-            # El resto de la restricción está perfecto, las unidades ya son consistentes
             energia_combustible = m.E[i,b] / efi_calor
             return energia_combustible * norma >= energia_combustible * ed * (1 - efi_aba)
     else:
@@ -450,14 +442,11 @@ def costo_social(m):
     internalizando el costo social de la contaminación.
     """
     costo_total_social = 0
-    
-    # Iteramos sobre todas las combinaciones y bloques
     for i in m.I:
-        # Solo aplica a tecnologías térmicas que tienen un factor de eficiencia
         tec = m.tecnologia[i]
         if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and m.eficiencia[i] > 0:
             for b in m.B:
-                # 1. Calcular la energía de combustible consumida en GWh
+                # Calcular la energía de combustible consumida en GWh
                 # m.E[i,b] está en GWh, m.eficiencia[i] es p.u.
                 energia_combustible_gwh = m.E[i, b] / m.eficiencia[i]
                 
