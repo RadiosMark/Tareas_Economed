@@ -358,9 +358,9 @@ model.demanda_constraint = pyo.Constraint(model.B, rule=balance_demanda)
 model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_existente)
 model.disponibilidad_tecnica_constraint = pyo.Constraint(model.C, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
-model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
-model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
-model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
+#model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
+#model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
+#model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
 
 #%%
 
@@ -500,9 +500,9 @@ df_2016_2030 = 1 / (1 + r_df)**(year)
 def objective_rule(m):
     costo_total_operacion = costo_operacion(m) # Llama a tu función
     costo_total_fijo = costo_fijo(m)           # Llama a tu función
-    costo_total_social = costo_social(m)       # Llama a la nueva función de costo social
-    
-    return df_2016_2030 * (costo_total_operacion + costo_total_fijo + costo_total_social)
+    #costo_total_social = costo_social(m)       # Llama a la nueva función de costo social
+
+    return df_2016_2030 * (costo_total_operacion + costo_total_fijo)
 
 model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
 
@@ -514,7 +514,7 @@ results = solver.solve(model, tee=True)
 print(f"Status: {results}")
 
 
-# %%
+
 
 # %%
 # --- SCRIPT PARA MOSTRAR LA SOLUCIÓN DE GENERACIÓN (E) ---
@@ -607,4 +607,92 @@ else:
     print("El modelo no encontró una solución óptima.")
     print(f"Estado del Solver: {results.solver.termination_condition}")
 
+# %%
+
+
+# %%
+# --- SCRIPT PARA MOSTRAR GENERACIÓN TOTAL POR TECNOLOGÍA ---
+
+print("\n" + "="*50)
+print("📊 REPORTE DE GENERACIÓN TOTAL POR TECNOLOGÍA (GWh) 📊")
+print("="*50 + "\n")
+
+if results.solver.termination_condition == pyo.TerminationCondition.optimal:
+    
+    # Un diccionario para acumular la generación por tecnología
+    generacion_por_tecnologia = defaultdict(float)
+    
+    # Itera sobre todas las variables de energía E[i, b]
+    for i, b in model.E:
+        energia_generada = pyo.value(model.E[i, b])
+        
+        if energia_generada > 1e-6:
+            # Obtenemos la tecnología de la combinación 'i'
+            tecnologia = model.tecnologia[i]
+            
+            # Agregamos la energía al total de esa tecnología
+            generacion_por_tecnologia[tecnologia] += energia_generada
+            
+    if not generacion_por_tecnologia:
+        print("No se encontró generación de energía significativa en la solución.")
+    else:
+        # Imprime los resultados en una tabla ordenada
+        print(f"{'TECNOLOGÍA':<25} | {'GENERACIÓN TOTAL (GWh)':>25}")
+        print("-" * 55)
+        
+        # Ordenamos el diccionario por la energía generada, de mayor a menor
+        sorted_tecnologias = sorted(generacion_por_tecnologia.items(), key=lambda item: item[1], reverse=True)
+        
+        for tecnologia, total_energia in sorted_tecnologias:
+            print(f"{tecnologia:<25} | {total_energia:>25.2f}")
+
+else:
+    print("El modelo no encontró una solución óptima.")
+    print(f"Estado del Solver: {results.solver.termination_condition}")
+
+print("\n" + "="*50)
+print("FIN DEL REPORTE")
+print("="*50)
+
+# %%
+# --- SCRIPT PARA MOSTRAR POTENCIA TOTAL POR TECNOLOGÍA (SIN FALLA) ---
+
+print("\n" + "="*50)
+print("🏗️  REPORTE DE POTENCIA REAL INSTALADA POR TECNOLOGÍA (MW) 🏗️")
+print("="*50 + "\n")
+
+if results.solver.termination_condition == pyo.TerminationCondition.optimal:
+    
+    potencia_por_tecnologia = defaultdict(float)
+    
+    for i in model.P:
+        # Usamos .value para manejar de forma segura las variables no inicializadas
+        potencia_instalada = model.P[i].value
+        
+        # Solo procesamos si la potencia tiene un valor numérico
+        if potencia_instalada is not None and potencia_instalada > 1e-6:
+            tecnologia = model.tecnologia[i]
+            
+            # --- MODIFICACIÓN: Excluir la central de falla del reporte ---
+            if tecnologia != 'central_falla':
+                potencia_por_tecnologia[tecnologia] += potencia_instalada
+            
+    if not potencia_por_tecnologia:
+        print("No se encontró instalación de potencia significativa (excluyendo falla) en la solución.")
+    else:
+        print(f"{'TECNOLOGÍA':<25} | {'POTENCIA TOTAL (MW)':>25}")
+        print("-" * 55)
+        
+        sorted_tecnologias = sorted(potencia_por_tecnologia.items(), key=lambda item: item[1], reverse=True)
+        
+        for tecnologia, total_potencia in sorted_tecnologias:
+            print(f"{tecnologia:<25} | {total_potencia:>25.2f}")
+
+else:
+    print("El modelo no encontró una solución óptima.")
+    print(f"Estado del Solver: {results.solver.termination_condition}")
+
+print("\n" + "="*50)
+print("FIN DEL REPORTE")
+print("="*50)
 # %%
