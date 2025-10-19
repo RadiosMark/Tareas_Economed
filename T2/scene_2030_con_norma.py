@@ -636,3 +636,4 @@ if results.solver.termination_condition == pyo.TerminationCondition.optimal:
 else:
     print("❌ El modelo no encontró una solución óptima. No se generó el reporte.")
     print(f"   Estado del Solver: {results.solver.termination_condition}")
+# %%
