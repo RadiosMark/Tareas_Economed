@@ -80,10 +80,7 @@ def anualidad(r, n): # r es tasa de descuento, n es vida util en años
 excel_path = 'datos_t2.xlsx'
 df_existentes = excel_range_to_df(excel_path, sheet='existentes', cell_range='E7:AB2695', header=0)
 
-# Imprimir el DataFrame para verificar
-#print(df_existentes)
 
-# pasamos a diccionario
 
 CONJ = df_existentes.set_index('id_combinacion').to_dict(orient='index')
 CONJ_C = df_existentes['id_centralcomb'].unique().tolist()
@@ -150,7 +147,6 @@ tasa_descuento = 0.1
 ## c in {1,2,...,num_centrales}
 ## a in {1,2,...,num_combinaciones_por_central}
 
-
 model = pyo.ConcreteModel(name="Modelo_Base")
 
 # --- CONJUNTOS ---
@@ -177,7 +173,7 @@ model.costo_social_sox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_
 model.costo_social_nox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Nox($/ton)'])
 model.costo_social_co2 = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Co2($/ton)'])
 
-# --- INICIO DE LA LÓGICA DE CONVERSIÓN DE UNIDADES Y CÁLCULO DE NORMA ---
+# --- CONVERSIÓN DE UNIDADES Y CÁLCULO DE NORMA ---
 
 # 1. Poder Calorífico (calculado desde tu tabla "Caja Mágica")
 poder_calorifico = {
@@ -441,8 +437,6 @@ def costo_fijo(m):
     
     return total_fijo
 
-# --- AÑADE ESTA NUEVA FUNCIÓN A TU CÓDIGO ---
-
 # Costo Social por Contaminación
 def costo_social(m):
     """
@@ -515,184 +509,130 @@ print(f"Status: {results}")
 
 
 
-
 # %%
-# --- SCRIPT PARA MOSTRAR LA SOLUCIÓN DE GENERACIÓN (E) ---
+# --- REPORTE COMPLETO EN UN .TXT ---
 
-print("\n" + "="*50)
-print("⚡ REPORTE DE GENERACIÓN DE ENERGÍA (GWh) ⚡")
-print("="*50 + "\n")
+print("📝 Generando reporte de resultados para el escenario 'Con Norma'...")
+
+# Nombre del archivo de salida
+nombre_archivo = 'resultados_modelo_normas.txt'
+
+# --- INICIO DEL SCRIPT ---
+try:
+    # Intenta cargar la solución para asegurar que los valores estén disponibles
+    model.solutions.load_from(results)
+except (ValueError, AttributeError):
+    print("⚠️ Advertencia: No se pudo cargar la solución. El modelo puede ser infactible.")
 
 # Verifica si el solver encontró una solución óptima
 if results.solver.termination_condition == pyo.TerminationCondition.optimal:
     
-    # Un diccionario para agrupar la generación por central y por bloque
-    generacion_agrupada = defaultdict(float)
+    # --- CÁLCULOS PREVIOS ---
     
-    # Itera sobre todas las variables de energía E[i, b]
-    for i, b in model.E:
-        energia_generada = pyo.value(model.E[i, b])
-        
-        # Solo procesamos si la generación es mayor a un valor pequeño
-        if energia_generada > 1e-6:
-            # Obtenemos el nombre de la central desde el diccionario de datos CONJ
-            nombre_central = CONJ[i]['Central']
-            
-            # Agregamos la energía al total de esa central en ese bloque
-            generacion_agrupada[(nombre_central, b)] += energia_generada
-            
-    if not generacion_agrupada:
-        print("No se encontró generación de energía significativa en la solución.")
-    else:
-        # Imprime los resultados agrupados de forma ordenada
-        print(f"{'CENTRAL':<40} | {'BLOQUE':<12} | {'GENERACIÓN (GWh)':>20}")
-        print("-" * 80)
-        # Ordenamos los resultados por nombre de central y luego por bloque
-        for (nombre, bloque), total_energia in sorted(generacion_agrupada.items()):
-            print(f"{nombre:<40} | {bloque:<12} | {total_energia:>20.4f}")
-
-else:
-    print("El modelo no encontró una solución óptima.")
-    print(f"Estado del Solver: {results.solver.termination_condition}")
-
-print("\n" + "="*50)
-print("FIN DEL REPORTE")
-print("="*50)
-
-# %% 
-
-# %%
-# Tras resolver: intenta cargar explícitamente la solución (por si acaso)
-try:
-    model.solutions.load_from(results)
-except:
-    pass
-
-print("\n" + "="*50)
-print("REPORTE DE POTENCIA INSTALADA (MW)")
-print("="*50 + "\n")
-
-if results.solver.termination_condition == pyo.TerminationCondition.optimal:
-    potencia_instalada = []
-    no_inicializadas = 0
-
-    for i in model.P:
-        val = model.P[i].value   # None si no fue parte del LP/solución
-        if val is None:
-            no_inicializadas += 1
-            continue
-        if val > 1e-6:
-            info = {
-                'id': i,
-                'central': CONJ[i]['Central'],
-                'potencia': val,
-                'abatidor_mp': CONJ[i]['MP'],
-                'abatidor_sox': CONJ[i]['Sox'],
-                'abatidor_nox': CONJ[i]['Nox']
-            }
-            potencia_instalada.append(info)
-
-    if not potencia_instalada:
-        print("No se encontró instalación de potencia significativa en la solución.")
-    else:
-        print(f"{'ID':<6} | {'CENTRAL':<40} | {'POTENCIA (MW)':>15} | {'ABATIDORES (MP, SOx, NOx)':<55}")
-        print("-" * 125)
-        for item in sorted(potencia_instalada, key=lambda x: x['central']):
-            abatidores_str = f"{item['abatidor_mp']}, {item['abatidor_sox']}, {item['abatidor_nox']}"
-            print(f"{item['id']:<6} | {item['central']:<40} | {item['potencia']:>15.4f} | {abatidores_str:<55}")
-
-    print(f"\nVariables P sin valor (no usadas en el LP activo): {no_inicializadas}")
-
-else:
-    print("El modelo no encontró una solución óptima.")
-    print(f"Estado del Solver: {results.solver.termination_condition}")
-
-# %%
-
-
-# %%
-# --- SCRIPT PARA MOSTRAR GENERACIÓN TOTAL POR TECNOLOGÍA ---
-
-print("\n" + "="*50)
-print("📊 REPORTE DE GENERACIÓN TOTAL POR TECNOLOGÍA (GWh) 📊")
-print("="*50 + "\n")
-
-if results.solver.termination_condition == pyo.TerminationCondition.optimal:
-    
-    # Un diccionario para acumular la generación por tecnología
-    generacion_por_tecnologia = defaultdict(float)
-    
-    # Itera sobre todas las variables de energía E[i, b]
-    for i, b in model.E:
-        energia_generada = pyo.value(model.E[i, b])
-        
-        if energia_generada > 1e-6:
-            # Obtenemos la tecnología de la combinación 'i'
-            tecnologia = model.tecnologia[i]
-            
-            # Agregamos la energía al total de esa tecnología
-            generacion_por_tecnologia[tecnologia] += energia_generada
-            
-    if not generacion_por_tecnologia:
-        print("No se encontró generación de energía significativa en la solución.")
-    else:
-        # Imprime los resultados en una tabla ordenada
-        print(f"{'TECNOLOGÍA':<25} | {'GENERACIÓN TOTAL (GWh)':>25}")
-        print("-" * 55)
-        
-        # Ordenamos el diccionario por la energía generada, de mayor a menor
-        sorted_tecnologias = sorted(generacion_por_tecnologia.items(), key=lambda item: item[1], reverse=True)
-        
-        for tecnologia, total_energia in sorted_tecnologias:
-            print(f"{tecnologia:<25} | {total_energia:>25.2f}")
-
-else:
-    print("El modelo no encontró una solución óptima.")
-    print(f"Estado del Solver: {results.solver.termination_condition}")
-
-print("\n" + "="*50)
-print("FIN DEL REPORTE")
-print("="*50)
-
-# %%
-# --- SCRIPT PARA MOSTRAR POTENCIA TOTAL POR TECNOLOGÍA (SIN FALLA) ---
-
-print("\n" + "="*50)
-print("🏗️  REPORTE DE POTENCIA REAL INSTALADA POR TECNOLOGÍA (MW) 🏗️")
-print("="*50 + "\n")
-
-if results.solver.termination_condition == pyo.TerminationCondition.optimal:
-    
+    # 1 y 2. Agrupar potencia por planta y tecnología
+    potencia_por_planta = defaultdict(float)
     potencia_por_tecnologia = defaultdict(float)
-    
     for i in model.P:
-        # Usamos .value para manejar de forma segura las variables no inicializadas
-        potencia_instalada = model.P[i].value
-        
-        # Solo procesamos si la potencia tiene un valor numérico
-        if potencia_instalada is not None and potencia_instalada > 1e-6:
+        potencia_valor = model.P[i].value
+        if potencia_valor is not None and potencia_valor > 1e-6:
+            nombre_central = CONJ[i]['Central']
             tecnologia = model.tecnologia[i]
-            
-            # --- MODIFICACIÓN: Excluir la central de falla del reporte ---
+            potencia_por_planta[nombre_central] += potencia_valor
             if tecnologia != 'central_falla':
-                potencia_por_tecnologia[tecnologia] += potencia_instalada
-            
-    if not potencia_por_tecnologia:
-        print("No se encontró instalación de potencia significativa (excluyendo falla) en la solución.")
-    else:
-        print(f"{'TECNOLOGÍA':<25} | {'POTENCIA TOTAL (MW)':>25}")
-        print("-" * 55)
+                potencia_por_tecnologia[tecnologia] += potencia_valor
+
+    # 3. Agrupar generación por tecnología
+    generacion_por_tecnologia = defaultdict(float)
+    for i, b in model.E:
+        energia_generada = model.E[i, b].value
+        if energia_generada is not None and energia_generada > 1e-6:
+            tecnologia = model.tecnologia[i]
+            if tecnologia != 'central_falla':
+                generacion_por_tecnologia[tecnologia] += energia_generada
+
+    # 6. Calcular emisiones totales
+    emisiones = {'MP': 0, 'SOx': 0, 'NOx': 0, 'CO2': 0}
+    # Asegúrate de tener cargado el parámetro de emisión de CO2
+    model.factor_emision_CO2 = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['ED_CO2(kg/Mg)'])
+    
+    for i in model.I:
+        tec = model.tecnologia[i]
+        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and model.eficiencia[i] > 0:
+            for b in model.B:
+                energia_gen_gwh = model.E[i, b].value
+                if energia_gen_gwh is not None and energia_gen_gwh > 1e-6:
+                    energia_combustible_gwh = energia_gen_gwh / model.eficiencia[i]
+                    
+                    # Cálculo para MP, SOx, NOx
+                    for cont_corto, cont_largo, param_emision in [('MP', 'MP', model.modelo_emision_MP), ('SOx', 'Sox', model.factor_emision_Sox), ('NOx', 'Nox', model.factor_emision_Nox)]:
+                        abatidor = getattr(model, f'abatidor_{cont_largo.lower()}')[i]
+                        efi_aba = 0
+                        if isinstance(abatidor, str):
+                            efi_aba = dic_equipo[cont_corto][abatidor]['Eficiencia_(p.u.)']
+                        toneladas_emitidas = energia_combustible_gwh * param_emision[i] * (1 - efi_aba)
+                        emisiones[cont_corto] += toneladas_emitidas
+                    
+                    # Cálculo para CO2
+                    co2_kg_ton = model.factor_emision_CO2[i]
+                    co2_ton_gwh = convertir_unidades(tec, co2_kg_ton)
+                    emisiones['CO2'] += energia_combustible_gwh * co2_ton_gwh
+    
+    # 5. Calcular el Costo Social Total de este escenario
+    costo_social_total_escenario_con_norma = pyo.value(costo_social(model))
+
+
+    # --- ESCRITURA DEL ARCHIVO .TXT ---
+    
+    with open(nombre_archivo, 'w', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("          REPORTE DE RESULTADOS: ESCENARIO 'CON NORMA'\n")
+        f.write("="*80 + "\n\n")
+
+        # --- 4) COSTO TOTAL DEL SISTEMA ---
+        costo_total = pyo.value(model.obj)
+        f.write("--- 4. Costo Total del Sistema ---\n")
+        f.write(f"Costo Óptimo: {costo_total / 1e6:.4f} MMUS$\n\n")
         
-        sorted_tecnologias = sorted(potencia_por_tecnologia.items(), key=lambda item: item[1], reverse=True)
-        
-        for tecnologia, total_potencia in sorted_tecnologias:
-            print(f"{tecnologia:<25} | {total_potencia:>25.2f}")
+        # --- 5) BENEFICIO DE LA NORMA ---
+        f.write("--- 5. Beneficio de la Norma ---\n")
+        f.write(f"Costo Social de la Contaminación (Daño Ambiental) en este escenario: {costo_social_total_escenario_con_norma / 1e6:.4f} MMUS$\n")
+        f.write("NOTA: Para calcular el 'Beneficio de la Norma', primero corre el modelo 'Sin Norma' y anota su 'Costo Social'.\n")
+        f.write("      Luego, calcula: Beneficio = (Costo Social SIN Norma) - (Costo Social CON Norma).\n\n")
+
+        # --- 6) EMISIONES TOTALES ---
+        f.write("--- 6. Emisiones Totales Anuales (centrales térmicas) ---\n")
+        f.write(f"{'Contaminante':<15} | {'Emisiones (toneladas)':>25}\n")
+        f.write("-" * 45 + "\n")
+        f.write(f"{'MP':<15} | {emisiones['MP']:>25.2f}\n")
+        f.write(f"{'SOx':<15} | {emisiones['SOx']:>25.2f}\n")
+        f.write(f"{'NOx':<15} | {emisiones['NOx']:>25.2f}\n")
+        f.write(f"{'CO2':<15} | {emisiones['CO2']:>25.2f}\n\n")
+
+        # --- 1) POTENCIA POR PLANTA ---
+        f.write("--- 1. Potencia Instalada por Planta (MW) ---\n")
+        f.write(f"{'Planta':<40} | {'Potencia (MW)':>15}\n")
+        f.write("-" * 60 + "\n")
+        for planta, potencia in sorted(potencia_por_planta.items()):
+            f.write(f"{planta:<40} | {potencia:>15.2f}\n")
+        f.write("\n")
+
+        # --- 2) POTENCIA POR TECNOLOGÍA ---
+        f.write("--- 2. Potencia Instalada por Tecnología (MW) ---\n")
+        f.write(f"{'Tecnología':<25} | {'Potencia (MW)':>20}\n")
+        f.write("-" * 50 + "\n")
+        for tec, potencia in sorted(potencia_por_tecnologia.items(), key=lambda item: item[1], reverse=True):
+            f.write(f"{tec:<25} | {potencia:>20.2f}\n")
+        f.write("\n")
+
+        # --- 3) GENERACIÓN POR TECNOLOGÍA ---
+        f.write("--- 3. Generación Anual por Tecnología (GWh) ---\n")
+        f.write(f"{'Tecnología':<25} | {'Generación (GWh)':>20}\n")
+        f.write("-" * 50 + "\n")
+        for tec, energia in sorted(generacion_por_tecnologia.items(), key=lambda item: item[1], reverse=True):
+            f.write(f"{tec:<25} | {energia:>20.2f}\n")
+    
+    print(f"✅ Reporte guardado exitosamente en el archivo '{nombre_archivo}'")
 
 else:
-    print("El modelo no encontró una solución óptima.")
-    print(f"Estado del Solver: {results.solver.termination_condition}")
-
-print("\n" + "="*50)
-print("FIN DEL REPORTE")
-print("="*50)
-# %%
+    print("❌ El modelo no encontró una solución óptima. No se generó el reporte.")
+    print(f"   Estado del Solver: {results.solver.termination_condition}")

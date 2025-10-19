@@ -1,0 +1,67 @@
+================================================================================
+                  REPORTE DE RESULTADOS DEL MODELO DE OPTIMIZACIÓN
+================================================================================
+
+--- 4. Costo Total del Sistema ---
+Costo Óptimo: 1533.9191 MMUS$
+
+--- 5. Beneficio de la Norma ---
+Costo Social de la Contaminación en este escenario: 1271.6915 MMUS$
+NOTA: Para calcular el 'Beneficio de la Norma', corre el modelo 'Sin Norma' y 'Con Norma'.
+      Luego, calcula: Beneficio = (Costo Social Sin Norma) - (Costo Social Con Norma).
+
+--- 6. Emisiones Totales (centrales térmicas) ---
+Contaminante    |     Emisiones (toneladas)
+---------------------------------------------
+MP              |                 274099.35
+SOx             |                 106409.54
+NOx             |                 250364.44
+CO2             |               28252513.12
+
+--- 1. Potencia Instalada por Planta (MW) ---
+Planta                                   |   Potencia (MW)
+------------------------------------------------------------
+biomasa|charrua                          |          204.00
+biomasa|itahue                           |           60.00
+carbon|RM                                |         2751.65
+carbon|coronel                           |          806.00
+carbon|huasco                            |          575.00
+carbon|quillota                          |          812.00
+cc-gnl|quillota                          |          731.00
+eolica_1|los_vilos                       |          192.00
+hidro|charrua                            |         5571.00
+petroleo_diesel|RM                       |          368.00
+petroleo_diesel|cardones                 |          169.00
+petroleo_diesel|charrua                  |         1043.00
+petroleo_diesel|diego_de_almagro         |          439.00
+petroleo_diesel|huasco                   |           58.00
+petroleo_diesel|itahue                   |          134.00
+petroleo_diesel|los_vilos                |          203.00
+petroleo_diesel|pan_de_azucar            |           97.00
+petroleo_diesel|puerto_montt             |          139.00
+petroleo_diesel|quillota                 |          700.00
+petroleo_diesel|valdivia                 |          135.00
+petroleo_diesel|valparaiso               |           71.00
+solar_FV_1|huasco                        |          200.00
+
+--- 2. Potencia Instalada por Tecnología (MW) ---
+Tecnología                |        Potencia (MW)
+--------------------------------------------------
+hidro                     |              5571.00
+carbon                    |              4944.65
+petroleo_diesel           |              3556.00
+cc-gnl                    |               731.00
+biomasa                   |               264.00
+solar_FV_1                |               200.00
+eolica_1                  |               192.00
+
+--- 3. Generación Anual por Tecnología (GWh) ---
+Tecnología                |     Generación (GWh)
+--------------------------------------------------
+carbon                    |             34581.54
+hidro                     |             30708.48
+biomasa                   |              1271.64
+petroleo_diesel           |               849.59
+cc-gnl                    |               815.80
+solar_FV_1                |               438.00
+eolica_1                  |               420.48
