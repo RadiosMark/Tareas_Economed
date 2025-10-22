@@ -585,8 +585,7 @@ if results.solver.termination_condition == pyo.TerminationCondition.optimal:
         # --- 5) BENEFICIO DE LA NORMA ---
         f.write("--- 5. Beneficio de la Norma ---\n")
         f.write(f"Costo Social de la Contaminación (Daño Ambiental) en este escenario: {costo_social_total_escenario_con_norma / 1e6:.4f} MMUS$\n")
-        f.write("NOTA: Para calcular el 'Beneficio de la Norma', primero corre el modelo 'Sin Norma' y anota su 'Costo Social'.\n")
-        f.write("      Luego, calcula: Beneficio = (Costo Social SIN Norma) - (Costo Social CON Norma).\n\n")
+        f.write("NOTA: Se calcula el costo social sin norma.\n")
 
         # --- 6) EMISIONES TOTALES ---
         f.write("--- 6. Emisiones Totales Anuales (centrales térmicas) ---\n")

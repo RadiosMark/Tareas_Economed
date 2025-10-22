@@ -7,8 +7,7 @@ Costo Óptimo: 1658.5748 MMUS$
 
 --- 5. Beneficio de la Norma ---
 Costo Social de la Contaminación (Daño Ambiental) en este escenario: 470.3706 MMUS$
-NOTA: Para calcular el 'Beneficio de la Norma', primero corre el modelo 'Sin Norma' y anota su 'Costo Social'.
-      Luego, calcula: Beneficio = (Costo Social SIN Norma) - (Costo Social CON Norma).
+"NOTA: Se calcula el costo social con norma
 
 --- 6. Emisiones Totales Anuales (centrales térmicas) ---
 Contaminante    |     Emisiones (toneladas)
