@@ -204,6 +204,7 @@ def cargar_factor_emision(m, i, cont_corto, cont_largo):
     valor_kg_ton = CONJ[i][f'ED_{cont_largo}(kg/Mg)']
     return convertir_unidades(tec, valor_kg_ton)
 
+# calculamos el limite de emision absoluta segun norma
 def cargar_norma_absoluta(m, i, cont_corto, cont_largo):
     id_central = CONJ[i]['id_centralcomb']
     ed_base = emision_descontrolada[id_central][cont_corto]
@@ -391,42 +392,60 @@ def costo_operacion(m):
             
     return total_variable
         
-# Costo Fijo        
+# Costo Fijo (VERSIÓN CORREGIDA)
 def costo_fijo(m):
     total_fijo = 0 
+    
+    # --- Parámetros de Abatidores (según pauta) ---
+    vida_util_abatidores = 30 
+    tasa_descuento_abatidores = 0.1 
+    anualizacion_abatidores = anualidad(tasa_descuento_abatidores, vida_util_abatidores)
+
     for i in m.I:
-        # Costo de inversión para centrales NUEVAS
-        if math.isnan(m.potencia_neta[i]):
-            
+        # La potencia de esta combinación (nueva o vieja)
+        potencia_instalada_kw = m.P[i] * 1000
+        
+        # Si el modelo no instala esta combinación, no hay costo fijo
+        if potencia_instalada_kw.value is None or potencia_instalada_kw.value <= 1e-6:
+             continue
+
+        costo_anual_central = 0.0
+        costo_anual_abatidores = 0.0
+
+        # --- 1. ¿Es una central NUEVA? Sumar su costo de inversión ---
+        if math.isnan(m.potencia_neta[i]): 
             costo_inv_central = m.costo_fijo[i] # ($/kW)
             
-            costo_mp = 0
-            costo_sox = 0
-            costo_nox = 0
+            # Asegurarse de que tiene vida útil para anualizar
+            if costo_inv_central > 0 and m.vida_util[i] > 0:
+                anualizacion_central = anualidad(tasa_descuento, m.vida_util[i])
+                costo_anual_central = potencia_instalada_kw * costo_inv_central * anualizacion_central
 
-            abatidor_mp = m.abatidor_mp[i]
-            if isinstance(abatidor_mp, str):
-                costo_mp = dic_equipo['MP'][abatidor_mp]['Inversión_($/kW)']
+        # --- 2. ¿Tiene ABATIDORES? Sumar su costo (PARA NUEVAS Y VIEJAS) ---
+        costo_mp = 0
+        costo_sox = 0
+        costo_nox = 0
 
-            abatidor_sox = m.abatidor_sox[i]
-            if isinstance(abatidor_sox, str):
-                costo_sox = dic_equipo['SOx'][abatidor_sox]['Inversión_($/kW)']
+        abatidor_mp = m.abatidor_mp[i]
+        if isinstance(abatidor_mp, str):
+            costo_mp = dic_equipo['MP'][abatidor_mp]['Inversión_($/kW)']
 
-            abatidor_nox = m.abatidor_nox[i]
-            if isinstance(abatidor_nox, str):
-                costo_nox = dic_equipo['NOx'][abatidor_nox]['Inversión_($/kW)']
+        abatidor_sox = m.abatidor_sox[i]
+        if isinstance(abatidor_sox, str):
+            costo_sox = dic_equipo['SOx'][abatidor_sox]['Inversión_($/kW)']
 
-            abatidores_cost = costo_mp + costo_sox + costo_nox
-            
-            costo_fijo_total_combinacion = costo_inv_central + abatidores_cost # $/kW
-            
-            # La potencia instalada P[i] está en MW, se pasa a kW
-            potencia_instalada_kw = m.P[i] * 1000 
-            
-            vida_util = m.vida_util[i]
-            if vida_util > 0:
-                anualizacion = anualidad(tasa_descuento, vida_util)
-                total_fijo += potencia_instalada_kw * costo_fijo_total_combinacion * anualizacion
+        abatidor_nox = m.abatidor_nox[i]
+        if isinstance(abatidor_nox, str):
+            costo_nox = dic_equipo['NOx'][abatidor_nox]['Inversión_($/kW)']
+        
+        abatidores_cost_bruto = costo_mp + costo_sox + costo_nox
+        
+        # Anualizamos el costo de los abatidores (si los hay)
+        if abatidores_cost_bruto > 0:
+            costo_anual_abatidores = potencia_instalada_kw * abatidores_cost_bruto * anualizacion_abatidores
+
+        # --- 3. Sumar ambos costos al total ---
+        total_fijo += (costo_anual_central + costo_anual_abatidores)
     
     return total_fijo
 
