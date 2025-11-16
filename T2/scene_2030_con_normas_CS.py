@@ -350,9 +350,9 @@ model.demanda_constraint = pyo.Constraint(model.B, rule=balance_demanda)
 model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_existente)
 model.disponibilidad_tecnica_constraint = pyo.Constraint(model.C, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
-#model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
-#model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
-#model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
+model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
+model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
+model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
 
 #%%
 
