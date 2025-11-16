@@ -7,8 +7,7 @@ Costo Óptimo Total: 1736.9871 MMUS$
 
 --- 5. Beneficio de la Norma ---
 Costo Social de la Contaminación (Daño Ambiental) en este escenario: 35.2702 MMUS$
-NOTA: Se calcula el costo social con norma y CS en la OF
-
+NOTA: Se calcula el costo social con norma y CS en la OF'.
 --- 6. Emisiones Totales Anuales (centrales térmicas) ---
 Contaminante    |     Emisiones (toneladas)
 ---------------------------------------------
@@ -16,6 +15,14 @@ MP              |                   2623.06
 SOx             |                   6504.26
 NOx             |                  43413.17
 CO2             |               21778189.31
+
+--- 6.b) Costos Emisiones (considerando abatidores) ---
+Contaminante    |      Emisiones (ton) |     Costo social ($)
+------------------------------------------------------------
+MP              |              2623.06 |           6458926.97
+SOx             |              6504.26 |           8517639.53
+NOx             |             43413.17 |          20293606.51
+CO2             |          21778189.31 |        1088909465.33
 
 --- 1. Potencia Instalada por Planta (MW) ---
 Planta                                   |   Potencia (MW)

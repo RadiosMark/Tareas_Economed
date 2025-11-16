@@ -501,6 +501,52 @@ results = solver.solve(model, tee=True)
 print(f"Status: {results}")
 
 
+def imprimir_costo_emisiones_descontroladas(m):
+    """
+    Calcula e imprime el costo social asociado a las emisiones 'descontroladas'
+    (sin considerar abatidores) por contaminante: MP, NOx, SOx y CO2.
+    Requiere que la solución del modelo esté cargada (usar tras `solver.solve`).
+    Devuelve: (costos_dict, emisiones_dict)
+    """
+    costos = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+    emisiones = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+    combustibles = ['carbon', 'petroleo_diesel', 'cc-gnl']
+
+    for i in m.I:
+        tec = m.tecnologia[i]
+        if tec in combustibles and m.eficiencia[i] > 0:
+            for b in m.B:
+                try:
+                    energia_gen_gwh = pyo.value(m.E[i, b])
+                except Exception:
+                    energia_gen_gwh = None
+                if energia_gen_gwh is None or energia_gen_gwh <= 1e-9:
+                    continue
+
+                energia_combustible_gwh = energia_gen_gwh / pyo.value(m.eficiencia[i])
+                id_central = CONJ[i]['id_centralcomb']
+
+                for cont in ['MP', 'SOx', 'NOx']:
+                    ed_base = emision_descontrolada[id_central].get(cont, 0)
+                    toneladas = energia_combustible_gwh * ed_base
+                    emisiones[cont] += toneladas
+                    param_name = f'costo_social_{cont.lower()}'
+                    costo_social_param = getattr(m, param_name)
+                    costos[cont] += toneladas * float(costo_social_param[i])
+
+                co2_kg_ton = CONJ[i].get('ED_CO2(kg/Mg)')
+                co2_ton_gwh = convertir_unidades(tec, co2_kg_ton)
+                toneladas_co2 = energia_combustible_gwh * co2_ton_gwh
+                emisiones['CO2'] += toneladas_co2
+                costos['CO2'] += toneladas_co2 * float(m.costo_social_co2[i])
+
+    print("--- Costos de Emisiones Descontroladas ---")
+    for cont in ['MP', 'SOx', 'NOx', 'CO2']:
+        print(f"{cont}: Emisiones = {emisiones[cont]:,.2f} ton, Costo social = ${costos[cont]:,.2f}")
+    return costos, emisiones
+
+
+
 
 
 # %%
@@ -599,6 +645,43 @@ if results.solver.termination_condition == pyo.TerminationCondition.optimal:
         f.write(f"{'SOx':<15} | {emisiones['SOx']:>25.2f}\n")
         f.write(f"{'NOx':<15} | {emisiones['NOx']:>25.2f}\n")
         f.write(f"{'CO2':<15} | {emisiones['CO2']:>25.2f}\n\n")
+
+        # --- 6.b) COSTOS DE EMISIONES (considerando abatidores) ---
+        costos_considerando_abat = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+        emisiones_considerando_abat = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+
+        for i in model.I:
+            tec = model.tecnologia[i]
+            if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and model.eficiencia[i] > 0:
+                for b in model.B:
+                    energia_gen = model.E[i, b].value
+                    if energia_gen is None or energia_gen <= 1e-9:
+                        continue
+                    energia_combustible_gwh = energia_gen / model.eficiencia[i]
+
+                    for cont_corto, cont_largo, param_emision in [('MP', 'MP', model.modelo_emision_MP), ('SOx', 'Sox', model.factor_emision_Sox), ('NOx', 'Nox', model.factor_emision_Nox)]:
+                        abatidor = getattr(model, f'abatidor_{cont_largo.lower()}')[i]
+                        efi_aba = 0
+                        if isinstance(abatidor, str):
+                            efi_aba = dic_equipo[cont_corto][abatidor]['Eficiencia_(p.u.)']
+                        toneladas = energia_combustible_gwh * param_emision[i] * (1 - efi_aba)
+                        emisiones_considerando_abat[cont_corto] += toneladas
+                        costos_considerando_abat[cont_corto] += toneladas * float(getattr(model, f'costo_social_{cont_corto.lower()}')[i])
+
+                    co2_kg_ton = CONJ[i].get('ED_CO2(kg/Mg)')
+                    co2_ton_gwh = convertir_unidades(tec, co2_kg_ton)
+                    toneladas_co2 = energia_combustible_gwh * co2_ton_gwh
+                    emisiones_considerando_abat['CO2'] += toneladas_co2
+                    costos_considerando_abat['CO2'] += toneladas_co2 * float(model.costo_social_co2[i])
+
+        f.write("--- 6.b) Costos Emisiones (considerando abatidores) ---\n")
+        f.write(f"{'Contaminante':<15} | {'Emisiones (ton)':>20} | {'Costo social ($)':>20}\n")
+        f.write("-" * 60 + "\n")
+        for cont in ['MP', 'SOx', 'NOx', 'CO2']:
+            emis = emisiones_considerando_abat.get(cont, 0.0)
+            cost = costos_considerando_abat.get(cont, 0.0)
+            f.write(f"{cont:<15} | {emis:>20.2f} | {cost:>20.2f}\n")
+        f.write("\n")
 
         # --- 1) POTENCIA POR PLANTA ---
         f.write("--- 1. Potencia Instalada por Planta (MW) ---\n")

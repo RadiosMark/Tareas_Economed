@@ -501,6 +501,62 @@ results = solver.solve(model, tee=True)
 print(f"Status: {results}")
 
 
+def imprimir_costo_emisiones_descontroladas(m):
+    """   
+    Calcula e imprime el costo social asociado a las emisiones 'descontroladas'
+    (sin considerar abatidores) por contaminante: MP, NOx, SOx y CO2.
+    Requiere que la solución del modelo esté cargada (usar tras `solver.solve`).
+    """
+    # Inicializar acumuladores
+    costos = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+    emisiones = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+
+    combustibles = ['carbon', 'petroleo_diesel', 'cc-gnl']
+
+    for i in m.I:
+        tec = m.tecnologia[i]
+        if tec in combustibles and m.eficiencia[i] > 0:
+            for b in m.B:
+                # Obtener generación en GWh (asegurar que la solución esté cargada)
+                try:
+                    energia_gen_gwh = pyo.value(m.E[i, b])
+                except Exception:
+                    energia_gen_gwh = None
+
+                if energia_gen_gwh is None or energia_gen_gwh <= 1e-9:
+                    continue
+
+                # Energía de combustible en GWh
+                energia_combustible_gwh = energia_gen_gwh / pyo.value(m.eficiencia[i])
+
+                # Identificador de la central para tomar la tasa "descontrolada"
+                id_central = CONJ[i]['id_centralcomb']
+
+                # MP, SOx, NOx: usar emision_descontrolada (ton/GWh) por central
+                for cont in ['MP', 'SOx', 'NOx']:
+                    ed_base = emision_descontrolada[id_central].get(cont, 0)
+                    toneladas = energia_combustible_gwh * ed_base
+                    emisiones[cont] += toneladas
+                    # Usar el costo social definido por combinacion i
+                    param_name = f'costo_social_{cont.lower()}'
+                    costo_social_param = getattr(m, param_name)
+                    costos[cont] += toneladas * float(costo_social_param[i])
+
+                # CO2: convertir desde ED_CO2(kg/Mg) usando la función de conversión
+                co2_kg_ton = CONJ[i].get('ED_CO2(kg/Mg)')
+                co2_ton_gwh = convertir_unidades(tec, co2_kg_ton)
+                toneladas_co2 = energia_combustible_gwh * co2_ton_gwh
+                emisiones['CO2'] += toneladas_co2
+                costos['CO2'] += toneladas_co2 * float(m.costo_social_co2[i])
+
+    # Imprimir resultados
+    print("--- Costos de Emisiones Descontroladas ---")
+    for cont in ['MP', 'SOx', 'NOx', 'CO2']:
+        print(f"{cont}: Emisiones = {emisiones[cont]:,.2f} ton, Costo social = ${costos[cont]:,.2f}")
+    return costos, emisiones
+
+
+
 # %%
 # --- SCRIPT PARA GENERAR REPORTE COMPLETO EN UN ARCHIVO .TXT ---
 
@@ -593,7 +649,14 @@ if results.solver.termination_condition == pyo.TerminationCondition.optimal:
 
 
     # --- ESCRITURA DEL ARCHIVO .TXT ---
-    
+    # --- COSTOS/EMISIONES DESCONTROLADAS (sin abatidores) ---
+    try:
+        costos_descontrolados, emisiones_descontroladas = imprimir_costo_emisiones_descontroladas(model)
+    except Exception as _e:
+        print("⚠️ No se pudo calcular costos descontrolados para el reporte:", _e)
+        costos_descontrolados = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+        emisiones_descontroladas = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
+
     with open(nombre_archivo, 'w', encoding='utf-8') as f:
         f.write("="*80 + "\n")
         f.write("                  REPORTE DE RESULTADOS DEL MODELO DE OPTIMIZACIÓN\n")
@@ -617,6 +680,16 @@ if results.solver.termination_condition == pyo.TerminationCondition.optimal:
         f.write(f"{'SOx':<15} | {emisiones['SOx']:>25.2f}\n")
         f.write(f"{'NOx':<15} | {emisiones['NOx']:>25.2f}\n")
         f.write(f"{'CO2':<15} | {emisiones['CO2']:>25.2f}\n\n")
+
+        # --- 6.b) COSTOS DE EMISIONES DESCONTROLADAS (sin abatidores) ---
+        f.write("--- 6.b) Costos Emisiones Descontroladas (sin abatidores) ---\n")
+        f.write(f"{'Contaminante':<15} | {'Emisiones (ton)':>20} | {'Costo social ($)':>20}\n")
+        f.write("-" * 60 + "\n")
+        for cont in ['MP', 'SOx', 'NOx', 'CO2']:
+            emis = emisiones_descontroladas.get(cont, 0.0)
+            cost = costos_descontrolados.get(cont, 0.0)
+            f.write(f"{cont:<15} | {emis:>20.2f} | {cost:>20.2f}\n")
+        f.write("\n")
 
         # --- 1) POTENCIA POR PLANTA ---
         f.write("--- 1. Potencia Instalada por Planta (MW) ---\n")
