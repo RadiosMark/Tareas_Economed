@@ -350,9 +350,9 @@ model.demanda_constraint = pyo.Constraint(model.B, rule=balance_demanda)
 model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_existente)
 model.disponibilidad_tecnica_constraint = pyo.Constraint(model.C, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
-model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
-model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
-model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
+#model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
+#model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
+#model.norma_emision_mp_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_mp)
 
 #%%
 
@@ -374,29 +374,35 @@ def costo_operacion(m):
             costo_mp = 0
             costo_sox = 0
             costo_nox = 0
-            
-            abatidor_mp = m.abatidor_mp[i]
-            if isinstance(abatidor_mp, str):
-                costo_mp = dic_equipo['MP'][abatidor_mp]['Costo_variable_($/MWh)']
 
-            abatidor_sox = m.abatidor_sox[i]
-            if isinstance(abatidor_sox, str):
-                costo_sox = dic_equipo['SOx'][abatidor_sox]['Costo_variable_($/MWh)']
+            if m.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl']:
+                abatidor_mp = m.abatidor_mp[i]
+                if isinstance(abatidor_mp, str):
+                    costo_mp = dic_equipo['MP'][abatidor_mp]['Costo_variable_($/MWh)']
 
-            abatidor_nox = m.abatidor_nox[i]
-            if isinstance(abatidor_nox, str):
-                costo_nox = dic_equipo['NOx'][abatidor_nox]['Costo_variable_($/MWh)']
-            
-            abatidores_cost = costo_mp + costo_sox + costo_nox # $/MWh
+                abatidor_sox = m.abatidor_sox[i]
+                if isinstance(abatidor_sox, str):
+                    costo_sox = dic_equipo['SOx'][abatidor_sox]['Costo_variable_($/MWh)']
 
-            # Energía está en GWh y los costos en $/MWh
-            total_variable += m.E[i, b] * 1000 * (costo_var + abatidores_cost)
+                abatidor_nox = m.abatidor_nox[i]
+                if isinstance(abatidor_nox, str):
+                    costo_nox = dic_equipo['NOx'][abatidor_nox]['Costo_variable_($/MWh)']
+                
+                abatidores_cost = 3.5*(costo_mp + costo_sox + costo_nox) # $/MWh
+
+                # Energía está en GWh y los costos en $/MWh
+                total_variable += m.E[i, b] * 1000 * (costo_var + abatidores_cost)
+            else:
+                total_variable += m.E[i, b] * 1000 * costo_var
             
     return total_variable
         
-# Costo Fijo (VERSIÓN CORREGIDA)
+
+# Costo Fijo (VERSIÓN CON FILTRO DE TECNOLOGÍA)
 def costo_fijo(m):
-    total_fijo = 0 
+    print("--- ¡ESTOY USANDO LA FUNCION COSTO_FIJO NUEVA Y CON FILTRO! ---")
+    # ... (el resto de tu función)
+    total_fijo_expression = 0.0
     
     # --- Parámetros de Abatidores (según pauta) ---
     vida_util_abatidores = 30 
@@ -404,52 +410,54 @@ def costo_fijo(m):
     anualizacion_abatidores = anualidad(tasa_descuento_abatidores, vida_util_abatidores)
 
     for i in m.I:
-        # La potencia de esta combinación (nueva o vieja)
+        # m.P[i] es una VARIABLE de Pyomo.
+        # potencia_instalada_kw se convierte en una EXPRESIÓN de Pyomo
         potencia_instalada_kw = m.P[i] * 1000
         
-        # Si el modelo no instala esta combinación, no hay costo fijo
-        if potencia_instalada_kw.value is None or potencia_instalada_kw.value <= 1e-6:
-             continue
+        costo_anual_central_por_kw = 0.0     # en $/kW-año
+        costo_anual_abatidores_por_kw = 0.0  # en $/kW-año
 
-        costo_anual_central = 0.0
-        costo_anual_abatidores = 0.0
-
-        # --- 1. ¿Es una central NUEVA? Sumar su costo de inversión ---
+        # --- 1. ¿Es una central NUEVA? Calcular su costo de inversión anualizado ---
         if math.isnan(m.potencia_neta[i]): 
             costo_inv_central = m.costo_fijo[i] # ($/kW)
             
-            # Asegurarse de que tiene vida útil para anualizar
             if costo_inv_central > 0 and m.vida_util[i] > 0:
                 anualizacion_central = anualidad(tasa_descuento, m.vida_util[i])
-                costo_anual_central = potencia_instalada_kw * costo_inv_central * anualizacion_central
+                costo_anual_central_por_kw = costo_inv_central * anualizacion_central
 
-        # --- 2. ¿Tiene ABATIDORES? Sumar su costo (PARA NUEVAS Y VIEJAS) ---
-        costo_mp = 0
-        costo_sox = 0
-        costo_nox = 0
-
-        abatidor_mp = m.abatidor_mp[i]
-        if isinstance(abatidor_mp, str):
-            costo_mp = dic_equipo['MP'][abatidor_mp]['Inversión_($/kW)']
-
-        abatidor_sox = m.abatidor_sox[i]
-        if isinstance(abatidor_sox, str):
-            costo_sox = dic_equipo['SOx'][abatidor_sox]['Inversión_($/kW)']
-
-        abatidor_nox = m.abatidor_nox[i]
-        if isinstance(abatidor_nox, str):
-            costo_nox = dic_equipo['NOx'][abatidor_nox]['Inversión_($/kW)']
+        # --- 2. ¿Tiene ABATIDORES? Calcular su costo (SOLO PARA TÉRMICAS) ---
         
-        abatidores_cost_bruto = costo_mp + costo_sox + costo_nox
+        # Obtenemos la tecnología de la combinación
+        tec = m.tecnologia[i]
         
-        # Anualizamos el costo de los abatidores (si los hay)
-        if abatidores_cost_bruto > 0:
-            costo_anual_abatidores = potencia_instalada_kw * abatidores_cost_bruto * anualizacion_abatidores
+        # ESTE ES EL FILTRO QUE FALTABA
+        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl']:
+            costo_mp = 0
+            costo_sox = 0
+            costo_nox = 0
 
-        # --- 3. Sumar ambos costos al total ---
-        total_fijo += (costo_anual_central + costo_anual_abatidores)
+            abatidor_mp = m.abatidor_mp[i]
+            if isinstance(abatidor_mp, str):
+                costo_mp = dic_equipo['MP'][abatidor_mp]['Inversión_($/kW)']
+
+            abatidor_sox = m.abatidor_sox[i]
+            if isinstance(abatidor_sox, str):
+                costo_sox = dic_equipo['SOx'][abatidor_sox]['Inversión_($/kW)']
+
+            abatidor_nox = m.abatidor_nox[i]
+            if isinstance(abatidor_nox, str):
+                costo_nox = dic_equipo['NOx'][abatidor_nox]['Inversión_($/kW)'] 
+            
+            abatidores_cost_bruto = costo_mp + costo_sox + costo_nox
+            
+            if abatidores_cost_bruto > 0:
+                costo_anual_abatidores_por_kw = abatidores_cost_bruto * anualizacion_abatidores
+
+        # --- 3. Construir la expresión final ---
+        # Suma el costo de la central (si es nueva) + el costo de abatidores (si es térmica)
+        total_fijo_expression += potencia_instalada_kw * (costo_anual_central_por_kw + costo_anual_abatidores_por_kw)
     
-    return total_fijo
+    return total_fijo_expression
 
 # Costo Social por Contaminación
 def costo_social(m):
