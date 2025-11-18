@@ -1,4 +1,4 @@
-# %%
+# %% 
 import pandas as pd
 import re
 import highspy as hgs
@@ -215,11 +215,12 @@ def cargar_norma_absoluta(m, i, cont_corto, cont_largo):
         
     return ed_base * (1 - porcentaje_reduccion)
 
-# 5. Carga final de parámetros (con las llamadas corregidas)
+# 5. Carga final de parámetros pasa de gwh a ton de contaminante
 model.factor_emision_Nox = pyo.Param(model.I, initialize=lambda m, i: cargar_factor_emision(m, i, 'NOx', 'Nox'))
 model.factor_emision_Sox = pyo.Param(model.I, initialize=lambda m, i: cargar_factor_emision(m, i, 'SOx', 'Sox'))
 model.modelo_emision_MP = pyo.Param(model.I, initialize=lambda m, i: cargar_factor_emision(m, i, 'MP', 'MP'))
 
+# B. Carga de normas de emisión absoluta, cuanto es lo máximo permitido de emitir
 model.norma_emision_Nox = pyo.Param(model.I, initialize=lambda m, i: cargar_norma_absoluta(m, i, 'NOx', 'Nox'))
 model.norma_emision_Sox = pyo.Param(model.I, initialize=lambda m, i: cargar_norma_absoluta(m, i, 'SOx', 'Sox'))
 model.norma_emision_MP = pyo.Param(model.I, initialize=lambda m, i: cargar_norma_absoluta(m, i, 'MP', 'MP'))
@@ -234,37 +235,49 @@ model.E = pyo.Var(model.I, model.B, within=pyo.NonNegativeReals)  # energia gene
 # Restricción 1: Balance de demanda por bloque
 def balance_demanda(m,b):
     generacion_total = sum(m.E[i,b] for i in m.I)
-    return generacion_total* (1000/(1+perdida)) >= m.param_bloques[b]['demanda']* m.param_bloques[b]['duracion']
+    return generacion_total* (1000/(1+perdida)) >= \
+            m.param_bloques[b]['demanda']* m.param_bloques[b]['duracion']
 
 # Restriccion 2: Se mantienen la potencia las centrales existentes
 def potencia_existente(m, c):
     combinaciones_de_c = MAPEO_C_a_I[c] # equivalente a i = 64 * (c - 1) + 1 
     primer_i = combinaciones_de_c[0]
     pot_neta = m.potencia_neta[primer_i]
-    if math.isnan(pot_neta):
+    if math.isnan(pot_neta): # nuevas
         return pyo.Constraint.Skip
     else:
         return sum(m.P[i] for i in combinaciones_de_c) == pot_neta
 
 # Restriccion 3: Dispobibilidad Técnica (maxima generacion)
-def disponibilidad_tecnica(m, c, b):
+""" def disponibilidad_tecnica(m, c, b):
     combinaciones_de_c = MAPEO_C_a_I[c] # equivalente a i = 64 * (c - 1) + 1 
     primer_i = combinaciones_de_c[0] 
 
     if m.tecnologia[primer_i] == 'central_falla':
         return pyo.Constraint.Skip
 
-    if m.tecnologia[primer_i] in ['hidro', 'hidro_conv', 'minihidro']: # Usar 'in' para listas
+    if m.tecnologia[primer_i] in ['hidro', 'hidro_conv', 'minihidro']: 
         disp = fd_hidro(b)
     else:
         disp = m.disponibilidad[primer_i]
 
     generacion_central = sum(m.E[i, b] for i in combinaciones_de_c) #GWh
     potencia_instalada_central = sum(m.P[i] for i in combinaciones_de_c) #MW
-
+            # mwh                             
     return (generacion_central * 1000) <= potencia_instalada_central * disp * m.param_bloques[b]['duracion']
+ """
 
-# Restriccion 4: Capacidad Por Central (esto seria para las nuevas)
+def disponibilidad_tecnica(m, i, b):
+    if m.tecnologia[i] == 'central_falla':
+        return pyo.Constraint.Skip
+
+    if m.tecnologia[i] in ['hidro', 'hidro_conv', 'minihidro']: 
+        disp = fd_hidro(b)
+    else:
+        disp = m.disponibilidad[i]
+    return (m.E[i, b] * 1000) <= m.P[i] * disp * m.param_bloques[b]['duracion']
+
+# Restriccion 4: Capacidad Por Central (esto seria para las nuevas, impone el techo)
 def capacidad_por_central(m, c):
     combinaciones_de_c = MAPEO_C_a_I[c] # equivalente a i = 64 * (c - 1) + 1 
     primer_i = combinaciones_de_c[0]
@@ -346,7 +359,7 @@ def norma_emision_mp(m,i,b):
 
 model.demanda_constraint = pyo.Constraint(model.B, rule=balance_demanda)
 model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_existente)
-model.disponibilidad_tecnica_constraint = pyo.Constraint(model.C, model.B, rule=disponibilidad_tecnica)
+model.disponibilidad_tecnica_constraint = pyo.Constraint(model.I, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
 model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
 model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
@@ -386,19 +399,16 @@ def costo_operacion(m):
                 if isinstance(abatidor_nox, str):
                     costo_nox = dic_equipo['NOx'][abatidor_nox]['Costo_variable_($/MWh)']
                 
-                abatidores_cost = 3.5*(costo_mp + costo_sox + costo_nox) # $/MWh
+                abatidores_cost = (costo_mp + costo_sox + costo_nox) # $/MWh
 
                 # Energía está en GWh y los costos en $/MWh
                 total_variable += m.E[i, b] * 1000 * (costo_var + abatidores_cost)
             else:
                 total_variable += m.E[i, b] * 1000 * costo_var
-            
     return total_variable
-
+        
 # Costo Fijo (VERSIÓN CON FILTRO DE TECNOLOGÍA)
 def costo_fijo(m):
-    print("--- ¡ESTOY USANDO LA FUNCION COSTO_FIJO NUEVA Y CON FILTRO! ---")
-    # ... (el resto de tu función)
     total_fijo_expression = 0.0
     
     # --- Parámetros de Abatidores (según pauta) ---
@@ -407,8 +417,7 @@ def costo_fijo(m):
     anualizacion_abatidores = anualidad(tasa_descuento_abatidores, vida_util_abatidores)
 
     for i in m.I:
-        # m.P[i] es una VARIABLE de Pyomo.
-        # potencia_instalada_kw se convierte en una EXPRESIÓN de Pyomo
+        # pasamos mw a kw
         potencia_instalada_kw = m.P[i] * 1000
         
         costo_anual_central_por_kw = 0.0     # en $/kW-año
@@ -498,7 +507,7 @@ def costo_social(m):
                 
                 toneladas_mp = energia_combustible_gwh * m.modelo_emision_MP[i] * (1 - efi_aba_mp)
                 costo_total_social += toneladas_mp * m.costo_social_mp[i]
-                
+
     return costo_total_social
 
 # %%
@@ -511,7 +520,6 @@ def objective_rule(m):
     costo_total_operacion = costo_operacion(m) # Llama a tu función
     costo_total_fijo = costo_fijo(m)           # Llama a tu función
     #costo_total_social = costo_social(m)       # Llama a la nueva función de costo social
-
     return df_2016_2030 * (costo_total_operacion+ costo_total_fijo)
 
 model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
@@ -519,6 +527,8 @@ model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
 #%% 
 # Resolver el modelo
 solver = pyo.SolverFactory('highs')
+logpath = r"c:\Users\DiegoYera\Desktop\2025-2\Econo_Med\Tareas_Economed\T2\highs_log_CON_norma.log"
+solver.options["log_file"] = logpath
 solver.options['mip_rel_gap'] = tolerancia
 results = solver.solve(model, tee=True)
 print(f"Status: {results}")

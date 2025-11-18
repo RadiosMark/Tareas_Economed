@@ -29,10 +29,9 @@ Planta                                   |   Potencia (MW)
 ------------------------------------------------------------
 biomasa|charrua                          |          204.00
 biomasa|itahue                           |           60.00
-carbon|RM                                |         2751.65
 carbon|coronel                           |          806.00
 carbon|huasco                            |          575.00
-carbon|quillota                          |          812.00
+carbon|quillota                          |         3563.65
 cc-gnl|quillota                          |          731.00
 eolica_1|los_vilos                       |          192.00
 hidro|charrua                            |         5571.00

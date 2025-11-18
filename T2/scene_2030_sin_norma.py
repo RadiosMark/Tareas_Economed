@@ -249,7 +249,7 @@ def potencia_existente(m, c):
         return sum(m.P[i] for i in combinaciones_de_c) == pot_neta
 
 # Restriccion 3: Dispobibilidad Técnica (maxima generacion)
-def disponibilidad_tecnica(m, c, b):
+""" def disponibilidad_tecnica(m, c, b):
     combinaciones_de_c = MAPEO_C_a_I[c] # equivalente a i = 64 * (c - 1) + 1 
     primer_i = combinaciones_de_c[0] 
 
@@ -265,6 +265,18 @@ def disponibilidad_tecnica(m, c, b):
     potencia_instalada_central = sum(m.P[i] for i in combinaciones_de_c) #MW
 
     return (generacion_central * 1000) <= potencia_instalada_central * disp * m.param_bloques[b]['duracion']
+ """
+
+def disponibilidad_tecnica(m, i, b):
+    if m.tecnologia[i] == 'central_falla':
+        return pyo.Constraint.Skip
+
+    if m.tecnologia[i] in ['hidro', 'hidro_conv', 'minihidro']: 
+        disp = fd_hidro(b)
+    else:
+        disp = m.disponibilidad[i]
+    return (m.E[i, b] * 1000) <= m.P[i] * disp * m.param_bloques[b]['duracion']
+
 
 # Restriccion 4: Capacidad Por Central (esto seria para las nuevas)
 def capacidad_por_central(m, c):
@@ -348,7 +360,7 @@ def norma_emision_mp(m,i,b):
 
 model.demanda_constraint = pyo.Constraint(model.B, rule=balance_demanda)
 model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_existente)
-model.disponibilidad_tecnica_constraint = pyo.Constraint(model.C, model.B, rule=disponibilidad_tecnica)
+model.disponibilidad_tecnica_constraint = pyo.Constraint(model.I, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
 #model.norma_emision_nox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_nox)
 #model.norma_emision_sox_constraint = pyo.Constraint(model.I, model.B, rule=norma_emision_sox)
@@ -496,6 +508,8 @@ model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
 #%% 
 # Resolver el modelo
 solver = pyo.SolverFactory('highs')
+logpath = r"c:\Users\DiegoYera\Desktop\2025-2\Econo_Med\Tareas_Economed\T2\highs_log_SIN_norma.log"
+solver.options["LOGFILE"] = logpath
 solver.options['mip_rel_gap'] = tolerancia
 results = solver.solve(model, tee=True)
 print(f"Status: {results}")
