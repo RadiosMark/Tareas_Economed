@@ -3,7 +3,7 @@
 ================================================================================
 
 --- 4. Costo Total del Sistema ---
-Costo Óptimo: 1875.7650 MMUS$
+Costo Óptimo: 2156.1435 MMUS$
 
 --- 5. Beneficio de la Norma ---
 Costo Social de la Contaminación (Daño Ambiental) en este escenario: 192.9543 MMUS$

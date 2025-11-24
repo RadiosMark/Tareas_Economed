@@ -235,8 +235,8 @@ model.E = pyo.Var(model.I, model.B, within=pyo.NonNegativeReals)  # energia gene
 # Restricción 1: Balance de demanda por bloque
 def balance_demanda(m,b):
     generacion_total = sum(m.E[i,b] for i in m.I)
-    return generacion_total* (1000/(1+perdida)) >= \
-            m.param_bloques[b]['demanda']* m.param_bloques[b]['duracion']
+    # Ajuste por pérdidas     GWh * 1000 = MWh  >= MW*h 
+    return generacion_total* (1000/(1+perdida)) >= m.param_bloques[b]['demanda']* m.param_bloques[b]['duracion']
 
 # Restriccion 2: Se mantienen la potencia las centrales existentes
 def potencia_existente(m, c):
@@ -386,6 +386,9 @@ def costo_operacion(m):
             costo_sox = 0
             costo_nox = 0
 
+            ## hay que llevar los costos variables de 2016 a 2030
+            df_2016_2030 = (1.1)**(14)
+
             if m.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl']:
                 abatidor_mp = m.abatidor_mp[i]
                 if isinstance(abatidor_mp, str):
@@ -405,7 +408,7 @@ def costo_operacion(m):
                 total_variable += m.E[i, b] * 1000 * (costo_var + abatidores_cost)
             else:
                 total_variable += m.E[i, b] * 1000 * costo_var
-    return total_variable
+    return total_variable*df_2016_2030
         
 # Costo Fijo (VERSIÓN CON FILTRO DE TECNOLOGÍA)
 def costo_fijo(m):
@@ -467,15 +470,12 @@ def costo_fijo(m):
 
 # Costo Social por Contaminación
 def costo_social(m):
-    """
-    Calcula el costo total por emisiones de NOx, SOx y MP,
-    internalizando el costo social de la contaminación.
-    """
     costo_total_social = 0
     for i in m.I:
         tec = m.tecnologia[i]
-        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and m.eficiencia[i] > 0:
+        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl']:
             for b in m.B:
+                df_2016_2030 = (1.1)**(14)
                 # Calcular la energía de combustible consumida en GWh
                 # m.E[i,b] está en GWh, m.eficiencia[i] es p.u.
                 energia_combustible_gwh = m.E[i, b] / m.eficiencia[i]
@@ -507,8 +507,9 @@ def costo_social(m):
                 
                 toneladas_mp = energia_combustible_gwh * m.modelo_emision_MP[i] * (1 - efi_aba_mp)
                 costo_total_social += toneladas_mp * m.costo_social_mp[i]
-                
-    return costo_total_social
+
+    print(f"Costo total social calculado: {costo_total_social}")
+    return costo_total_social*df_2016_2030
 
 # %%
 
@@ -517,9 +518,9 @@ df_2016_2030 = 1 / (1 + r_df)**(year)
 
 # SOLUCIÓN
 def objective_rule(m):
-    costo_total_operacion = costo_operacion(m) # Llama a tu función
-    costo_total_fijo = costo_fijo(m)           # Llama a tu función
-    costo_total_social = costo_social(m)       # Llama a la nueva función de costo social
+    costo_total_operacion = costo_operacion(m) # Costos de operación
+    costo_total_fijo = costo_fijo(m)           # Costos fijos
+    costo_total_social = costo_social(m)       # Costo social
 
     return df_2016_2030 * (costo_total_operacion + costo_total_fijo + costo_total_social)
 
@@ -534,50 +535,6 @@ solver.options['mip_rel_gap'] = tolerancia
 results = solver.solve(model, tee=True)
 print(f"Status: {results}")
 
-
-def imprimir_costo_emisiones_descontroladas(m):
-    """
-    Calcula e imprime el costo social asociado a las emisiones 'descontroladas'
-    (sin considerar abatidores) por contaminante: MP, NOx, SOx y CO2.
-    Requiere que la solución del modelo esté cargada (usar tras `solver.solve`).
-    Devuelve: (costos_dict, emisiones_dict)
-    """
-    costos = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
-    emisiones = {'MP': 0.0, 'SOx': 0.0, 'NOx': 0.0, 'CO2': 0.0}
-    combustibles = ['carbon', 'petroleo_diesel', 'cc-gnl']
-
-    for i in m.I:
-        tec = m.tecnologia[i]
-        if tec in combustibles and m.eficiencia[i] > 0:
-            for b in m.B:
-                try:
-                    energia_gen_gwh = pyo.value(m.E[i, b])
-                except Exception:
-                    energia_gen_gwh = None
-                if energia_gen_gwh is None or energia_gen_gwh <= 1e-9:
-                    continue
-
-                energia_combustible_gwh = energia_gen_gwh / pyo.value(m.eficiencia[i])
-                id_central = CONJ[i]['id_centralcomb']
-
-                for cont in ['MP', 'SOx', 'NOx']:
-                    ed_base = emision_descontrolada[id_central].get(cont, 0)
-                    toneladas = energia_combustible_gwh * ed_base
-                    emisiones[cont] += toneladas
-                    param_name = f'costo_social_{cont.lower()}'
-                    costo_social_param = getattr(m, param_name)
-                    costos[cont] += toneladas * float(costo_social_param[i])
-
-                co2_kg_ton = CONJ[i].get('ED_CO2(kg/Mg)')
-                co2_ton_gwh = convertir_unidades(tec, co2_kg_ton)
-                toneladas_co2 = energia_combustible_gwh * co2_ton_gwh
-                emisiones['CO2'] += toneladas_co2
-                costos['CO2'] += toneladas_co2 * float(m.costo_social_co2[i])
-
-    print("--- Costos de Emisiones Descontroladas ---")
-    for cont in ['MP', 'SOx', 'NOx', 'CO2']:
-        print(f"{cont}: Emisiones = {emisiones[cont]:,.2f} ton, Costo social = ${costos[cont]:,.2f}")
-    return costos, emisiones
 
 
 # %%

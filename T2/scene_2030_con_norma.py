@@ -520,7 +520,7 @@ def objective_rule(m):
     costo_total_operacion = costo_operacion(m) # Llama a tu función
     costo_total_fijo = costo_fijo(m)           # Llama a tu función
     #costo_total_social = costo_social(m)       # Llama a la nueva función de costo social
-    return df_2016_2030 * (costo_total_operacion+ costo_total_fijo)
+    return (costo_total_operacion+ costo_total_fijo)
 
 model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
 
