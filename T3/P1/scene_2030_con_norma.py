@@ -554,7 +554,7 @@ model.obj = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
 
 metas = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25]
 resultados_resumen = []
-emisiones_bau_co2 = 0
+emisiones_bau_co2 = 21290785.35  # ton CO2 (valor de referencia BAU)
 
 # Parametros del solver
 solver = pyo.SolverFactory('highs')
@@ -567,47 +567,66 @@ model.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
 
 #%%
 
-print("\n--- INICIANDO EJECUCIÓN ITERATIVA PREGUNTA 1 ---")
+# --- DEFINICIÓN DE LA EXPRESIÓN DE EMISIONES (Reutilizable) ---
+def get_emisiones_expression(m):
+    # Esta función devuelve la EXPRESIÓN matemática (suma de variables), no el valor numérico
+    suma_emisiones = 0
+    for i in m.I:
+        tec = m.tecnologia[i]
+        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and m.eficiencia[i] > 0:
+            for b in m.B:
+                # E[i,b] es la variable
+                suma_emisiones += (m.E[i, b] / m.eficiencia[i]) * m.factor_emision_CO2[i]
+    return suma_emisiones
 
-# Lista para guardar todos los resultados detallados
+# --- INICIO DEL LOOP ITERATIVO ---
+print("\n--- INICIANDO EJECUCIÓN ITERATIVA (ESTRATEGIA RECONSTRUCCIÓN) ---")
+
 resultados_completos = []
+emisiones_bau_co2 = 0 # Lo calcularemos dinámicamente en la primera vuelta
 
 for meta in metas:
     print(f"\n>>> Procesando Meta: {meta*100:.0f}%")
     
-    # 1. Configurar Límite
-    if meta == 0.0:
-        model.limite_co2_total = float('inf')
-    else:
-        # Se usa el valor BAU calculado en la primera vuelta
-        nuevo_limite = emisiones_bau_co2 * (1 - meta)
-        model.limite_co2_total = nuevo_limite
-        print(f"    Límite impuesto: {nuevo_limite:,.2f} ton CO2")
+    # 1. ELIMINAR LA RESTRICCIÓN DE LA VUELTA ANTERIOR (Si existe)
+    if hasattr(model, 'meta_co2_constraint'):
+        model.del_component(model.meta_co2_constraint)
     
-    # 2. Resolver
-    results = solver.solve(model) # No usamos tee=True para no saturar la consola
+    # 2. DEFINIR EL NUEVO LÍMITE Y CREAR LA RESTRICCIÓN
+    if meta == 0.0:
+        # En BAU no ponemos restricción (o ponemos infinito)
+        # Simplemente no agregamos la constraint al modelo, o ponemos una dummy
+        print(f"    Modo BAU: Sin restricción de CO2")
+    else:
+        # Calculamos el límite numérico
+        limite_actual = emisiones_bau_co2 * (1 - meta)
+        
+        # --- AQUÍ ESTÁ LA MAGIA: CREAMOS LA RESTRICCIÓN NUEVA EXPLÍCITA ---
+        # Expresion de emisiones <= Numero calculado
+        model.meta_co2_constraint = pyo.Constraint(expr= get_emisiones_expression(model) <= limite_actual)
+        
+        print(f"    Restricción activa: Emisiones <= {limite_actual:,.2f}")
+
+    # 3. RESOLVER
+    results = solver.solve(model) 
     
     if results.solver.termination_condition != pyo.TerminationCondition.optimal:
-        print(f"    ⚠️ NO ÓPTIMO para meta {meta}")
-        continue
-
-    # 3. Extracción de Resultados (DENTRO DEL LOOP)
+        print(f"    ⚠️ NO ÓPTIMO para meta {meta}. El sistema no puede reducir tanto.")
+        # Opcional: break o continue dependiendo de lo que quieras
     
-    # A) Costo Total (Objetivo)
+    # 4. EXTRACCIÓN DE RESULTADOS
     costo_total_obj = pyo.value(model.obj)
     
-    # B) Costo Marginal (Dual)
-    # OJO: El dual viene descontado al 2016 porque tu función objetivo tiene el factor de descuento.
-    # Para tenerlo en USD de 2030, hay que dividir por el factor de descuento.
+    # Costo Marginal (Dual)
     cmg_co2 = 0
-    if meta > 0 and model.meta_co2_constraint in model.dual:
+    # Solo intentamos sacar el dual si la restricción existe y la meta no es 0
+    if meta > 0 and hasattr(model, 'meta_co2_constraint') and model.meta_co2_constraint in model.dual:
         cmg_co2 = model.dual[model.meta_co2_constraint] / df_2016_2030 
 
-    # C) Calcular Emisiones y Costos Sociales DETALLADOS
+    # Cálculo detallado de emisiones para guardar
     emisiones_iter = {'MP': 0, 'SOx': 0, 'NOx': 0, 'CO2': 0}
     costo_social_iter = 0
     
-    # Recorremos las combinaciones para sumar emisiones reales
     for i in model.I:
         tec = model.tecnologia[i]
         if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and model.eficiencia[i] > 0:
@@ -620,7 +639,7 @@ for meta in metas:
                     co2_ton = e_comb * model.factor_emision_CO2[i]
                     emisiones_iter['CO2'] += co2_ton
                     
-                    # Otros contaminantes (considerando abatidores)
+                    # Otros
                     for cont, param_emision, param_costo_soc, param_abatidor in [
                         ('MP', model.modelo_emision_MP, model.costo_social_mp, model.abatidor_mp),
                         ('SOx', model.factor_emision_Sox, model.costo_social_sox, model.abatidor_sox),
@@ -629,9 +648,7 @@ for meta in metas:
                         abatidor = param_abatidor[i]
                         efi_aba = 0
                         if isinstance(abatidor, str):
-                            # Buscamos la eficiencia en el diccionario global dic_equipo
-                            # Nota: Asegúrate de que las claves coincidan (MP vs Equipo_MP)
-                            tipo_dic = 'MP' if cont == 'MP' else cont # Ajuste por nombres de diccionarios
+                            tipo_dic = 'MP' if cont == 'MP' else cont
                             if abatidor in dic_equipo[tipo_dic]:
                                 efi_aba = dic_equipo[tipo_dic][abatidor]['Eficiencia_(p.u.)']
                         
@@ -639,20 +656,19 @@ for meta in metas:
                         emisiones_iter[cont] += emis_ton
                         costo_social_iter += emis_ton * param_costo_soc[i]
 
-    # El costo social del CO2 se calcula aparte ($50/ton según enunciado)
     costo_social_co2_iter = emisiones_iter['CO2'] * 50 
     costo_social_total_iter = costo_social_iter + costo_social_co2_iter
 
-    # D) Guardar referencia BAU
+    # Si es BAU, guardamos la referencia para las siguientes vueltas
     if meta == 0.0:
         emisiones_bau_co2 = emisiones_iter['CO2']
-        print(f"    --> BAU CO2 Referencia: {emisiones_bau_co2:,.2f} ton")
+        print(f"    --> BAU CO2 Calculado y fijado: {emisiones_bau_co2:,.2f} ton")
 
-    # E) Guardar todo en un diccionario
+    # Guardar
     resultados_completos.append({
         'Meta (%)': meta * 100,
         'Costo Total Sistema (MMUSD)': costo_total_obj / 1e6,
-        'Costo Marginal CO2 ($/ton)': abs(cmg_co2), # Absoluto por si el solver lo da negativo
+        'Costo Marginal CO2 ($/ton)': abs(cmg_co2),
         'Emisiones CO2 (ton)': emisiones_iter['CO2'],
         'Emisiones MP (ton)': emisiones_iter['MP'],
         'Emisiones SOx (ton)': emisiones_iter['SOx'],
@@ -662,6 +678,10 @@ for meta in metas:
 
 print("--- FIN DEL LOOP ---")
 
+# Generar Excel
+df_resultados = pd.DataFrame(resultados_completos)
+print(df_resultados)
+df_resultados.to_excel("resultados_tarea3_p1_reconstruido.xlsx", index=False)
 
 # %%
 
@@ -670,3 +690,5 @@ print(df_resultados)
 
 # Exportar a Excel para copiar y pegar en la Tarea
 df_resultados.to_excel("resultados_tarea3_p1.xlsx", index=False)
+
+# %%
