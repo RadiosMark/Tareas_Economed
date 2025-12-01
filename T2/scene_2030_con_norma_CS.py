@@ -386,8 +386,6 @@ def costo_operacion(m):
             costo_sox = 0
             costo_nox = 0
 
-            ## hay que llevar los costos variables de 2016 a 2030
-            df_2016_2030 = (1.1)**(14)
 
             if m.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl']:
                 abatidor_mp = m.abatidor_mp[i]
@@ -408,7 +406,7 @@ def costo_operacion(m):
                 total_variable += m.E[i, b] * 1000 * (costo_var + abatidores_cost)
             else:
                 total_variable += m.E[i, b] * 1000 * costo_var
-    return total_variable*df_2016_2030
+    return total_variable
         
 # Costo Fijo (VERSIÓN CON FILTRO DE TECNOLOGÍA)
 def costo_fijo(m):

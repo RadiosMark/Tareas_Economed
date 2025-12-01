@@ -3,26 +3,26 @@
 ================================================================================
 
 --- 4. Costo Total del Sistema (incluye Costo Social) ---
-Costo Óptimo Total: 3946.8580 MMUS$
+Costo Óptimo Total: 1974.1276 MMUS$
 
 --- 5. Beneficio de la Norma ---
-Costo Social de la Contaminación (Daño Ambiental) en este escenario: 69.7380 MMUS$
+Costo Social de la Contaminación (Daño Ambiental) en este escenario: 154.5800 MMUS$
 NOTA: Se calcula el costo social con norma y CS en la OF'.
 --- 6. Emisiones Totales Anuales (centrales térmicas) ---
 Contaminante    |     Emisiones (toneladas)
 ---------------------------------------------
-MP              |                   5542.63
-SOx             |                  23807.07
-NOx             |                  16917.80
-CO2             |                5726864.39
+MP              |                   5642.91
+SOx             |                  60233.44
+NOx             |                  38642.20
+CO2             |               21340806.43
 
 --- 6.b) Costos Emisiones (considerando abatidores) ---
 Contaminante    |      Emisiones (ton) |     Costo social ($)
 ------------------------------------------------------------
-MP              |              5542.63 |           6323109.97
-SOx             |             23807.07 |           7866890.46
-NOx             |             16917.80 |           4174203.74
-CO2             |           5726864.39 |         286343219.33
+MP              |              5642.91 |           8729858.06
+SOx             |             60233.44 |          20311427.98
+NOx             |             38642.20 |          11664451.26
+CO2             |          21340806.43 |        1067040321.53
 
 --- 1. Potencia Instalada por Planta (MW) ---
 Planta                                   |   Potencia (MW)
@@ -30,13 +30,11 @@ Planta                                   |   Potencia (MW)
 biomasa|charrua                          |          204.00
 biomasa|itahue                           |           60.00
 carbon|coronel                           |          806.00
-carbon|huasco                            |          575.00
+carbon|huasco                            |         1480.76
 carbon|quillota                          |          812.00
 cc-gnl|quillota                          |          731.00
 eolica_1|los_vilos                       |          192.00
-eolica_2|huasco                          |          500.00
 hidro|charrua                            |         7071.00
-minihidro|charrua                        |          112.08
 petroleo_diesel|RM                       |          368.00
 petroleo_diesel|cardones                 |          169.00
 petroleo_diesel|charrua                  |         1043.00
@@ -50,33 +48,25 @@ petroleo_diesel|quillota                 |          700.00
 petroleo_diesel|valdivia                 |          135.00
 petroleo_diesel|valparaiso               |           71.00
 solar_FV_1|huasco                        |          200.00
-solar_FV_2|huasco                        |          500.00
-solar_FV_3|huasco                        |         7116.52
 
 --- 2. Potencia Instalada por Tecnología (MW) ---
 Tecnología                |        Potencia (MW)
 --------------------------------------------------
-solar_FV_3                |              7116.52
 hidro                     |              7071.00
 petroleo_diesel           |              3556.00
-carbon                    |              2193.00
+carbon                    |              3098.76
 cc-gnl                    |               731.00
-eolica_2                  |               500.00
-solar_FV_2                |               500.00
 biomasa                   |               264.00
 solar_FV_1                |               200.00
 eolica_1                  |               192.00
-minihidro                 |               112.08
 
 --- 3. Generación Anual por Tecnología (GWh) ---
 Tecnología                |     Generación (GWh)
 --------------------------------------------------
 hidro                     |             38976.78
-solar_FV_3                |             18702.21
-carbon                    |              6793.42
-eolica_2                  |              1533.00
-solar_FV_2                |              1533.00
+carbon                    |             23020.03
+cc-gnl                    |              3638.45
+petroleo_diesel           |              1320.15
+biomasa                   |              1271.64
 solar_FV_1                |               438.00
 eolica_1                  |               420.48
-minihidro                 |               403.51
-biomasa                   |               285.12

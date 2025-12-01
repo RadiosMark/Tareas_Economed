@@ -157,8 +157,6 @@ model.disponibilidad_tecnica_constraint = pyo.Constraint(model.I, model.B, rule=
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
 
 # ### [MODIFICACIÓN P2] ELIMINACIÓN DE NORMAS ###
-# En la P2, las normas se eliminan. No las definimos como Constraint, o las desactivamos explícitamente.
-# Para este script, simplemente NO agregamos las restricciones de norma ni la de meta de CO2.
 
 # --- Función Objetivo ---
 
@@ -212,9 +210,8 @@ def costo_fijo(m):
         total_fijo += pot_kw * costo_kw_anual
     return total_fijo
 
-# ### [MODIFICACIÓN P2] NUEVA FUNCIÓN: COSTO SOCIAL INTERNALIZADO ###
-# Esta función calcula el daño ambiental para sumarlo a la función objetivo.
-# Incluye el IMPUESTO al CO2 ($50/ton) y los costos sociales locales.
+# ### COSTO SOCIAL INTERNALIZADO ###
+# Impuesto al CO2 ($50/ton) y los costos sociales locales.
 def costo_social_total(m):
     total_social = 0
     TAX_CO2 = 50.0  # [cite: 190] Carbon Tax igual al costo social
@@ -249,10 +246,10 @@ def costo_social_total(m):
                     
     return total_social
 
-# ### [MODIFICACIÓN P2] FUNCIÓN OBJETIVO COMBINADA ###
-# Min (Costo Privado + Costo Social) [cite: 72]
+# Factor de descuento
 r_df = 0.01
 df_2016_2030 = 1 / (1 + r_df)**year
+
 
 def objective_rule_social(m):
     return df_2016_2030 * (costo_operacion(m) + costo_fijo(m) + costo_social_total(m))
@@ -263,11 +260,10 @@ model.obj = pyo.Objective(rule=objective_rule_social, sense=pyo.minimize)
 # --- RESOLUCIÓN ---
 
 solver = pyo.SolverFactory('highs')
-# solver.options["log_file"] = ... (Opcional)
+# solver.options["log_file"] = ... 
 solver.options['mip_rel_gap'] = tolerancia
 
 print(">>> Resolviendo Pregunta 2: Política Eficiente (Impuestos Pigouvianos)...")
-# Como ves, NO hay loop. Se corre una sola vez.
 results = solver.solve(model, tee=True)
 
 # %%
