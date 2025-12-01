@@ -13,12 +13,9 @@ print("--- INICIANDO MODELO PREGUNTA 2 (IMPUESTOS PIGOUVIANOS) ---")
 tolerancia = 0.00001
 perdida = 0.04
 tasa_descuento = 0.1
-year = 2030 - 2016
-# Factor para llevar costos de 2016 (FO) a 2030 (Tablas)
-r_df = 0.01 # Tasa social de descuento usada en el enunciado anterior, ajusta si es distinta
+year = 2030 - 2016 # Factor para llevar costos de 2016 a 2030
+r_df = 0.01 # Tasa de descuento 
 factor_conversion_2030 = (1 + r_df)**year 
-# Nota: En tu script original usabas df_2016_2030 = 1 / (1+r)**n.
-# Para reportar en USD 2030, debemos multiplicar por (1+r)^n.
 df_2016_2030_inv = 1 / factor_conversion_2030 # Factor descuento para la FO
 
 t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'hidro', 'minihidro','eolica','solar', 'geotermia']
@@ -220,7 +217,7 @@ def costo_social_total(m):
                     total_social += e_comb * param_ems[i] * (1 - efi) * param_costo[i]
     return total_social
 
-# Función Objetivo P2: Privado + Social
+# Función Objetivo P2: Fijo + Operacion + Social
 def objective_rule_social(m):
     return df_2016_2030_inv * (costo_operacion(m) + costo_fijo(m) + costo_social_total(m))
 

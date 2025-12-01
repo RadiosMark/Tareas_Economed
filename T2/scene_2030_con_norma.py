@@ -86,32 +86,6 @@ CONJ = df_existentes.set_index('id_combinacion').to_dict(orient='index')
 CONJ_C = df_existentes['id_centralcomb'].unique().tolist()
 
 HEADERS = df_existentes.columns.tolist()
-""" 
-Obtengo esto
-['id_combinacion',
- 'id_centralcomb',
- 'Central',
- 'MP',
- 'Sox',
- 'Nox',
- 'costo_fijo($/KW-neto)',
- 'costo variable($/MWh)',
- 'potencia_neta(MW)',
- 'eficiencia(%)',
- 'disponibilidad(p.u.)',
- 'vida_util',
- 'Restricciones_max(MW)',
- 'ED_MP(kg/Mg)',
- 'ED_Nox(kg/Mg)',
- 'ED_Sox(kg/Mg)',
- 'ED_CO2(kg/Mg)',
- 'Norma_MP',
- 'Norma_Sox',
- 'Norma_Nox',
- 'CS_MP($/ton)',
- 'CS_Sox($/ton)',
- 'CS_Nox($/ton)',
- 'CS_Co2($/ton)'] """
 
 # %%
 
@@ -140,11 +114,8 @@ tasa_descuento = 0.1
 
 # --- 3. CONSTRUCCIÓN DEL MODELO PYOMO ---
 
-## nocion: ahora quie tenemos 64 combinaciones para todas las centrales, 
-## el indice por central i = 64(c−1)+a 
-## c = central y a es la combinacion dentro de la central
-## c in {1,2,...,num_centrales}
-## a in {1,2,...,num_combinaciones_por_central}
+## Ahora tenemos 64 combinaciones por central; el índice i = 64*(c-1)+a
+## c = central, a = combinación dentro de la central
 
 model = pyo.ConcreteModel(name="Modelo_Base")
 
