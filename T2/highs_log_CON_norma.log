@@ -344,3 +344,107 @@ Simplex   iterations: 79
 Objective value     :  1.9163828907e+09
 P-D objective error :  1.2441072199e-16
 HiGHS run time      :          0.39
+LP   has 15581 rows; 10752 cols; 32189 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Presolving model
+7901 rows, 6863 cols, 18011 nonzeros  0s
+4198 rows, 5600 cols, 13663 nonzeros  0s
+Dependent equations search running on 17 equations with time limit of 1000.00s
+Dependent equations search removed 0 rows and 0 nonzeros in 0.00s (limit = 1000.00s)
+4069 rows, 5408 cols, 13151 nonzeros  0s
+Presolve : Reductions: rows 4069(-11512); columns 5408(-5344); elements 13151(-19038)
+Solving the presolved LP
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0    -1.5951597794e+02 Ph1: 9(10.1245); Du: 3(159.516) 0s
+       2386     1.8757649622e+09 Pr: 0(0); Du: 0(7.27596e-12) 0s
+Solving the original LP from the solution after postsolve
+Model status        : Optimal
+Simplex   iterations: 2386
+Objective value     :  1.8757649622e+09
+P-D objective error :  1.9065707899e-16
+HiGHS run time      :          0.18
+LP   has 15582 rows; 10752 cols; 37754 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Solving LP without presolve, or with basis, or unconstrained
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0     1.8757664512e+09 Pr: 1(16633.4); Du: 0(2.92421e-07) 0s
+          7     1.8784867356e+09 Pr: 0(0); Du: 0(4.54747e-13) 0s
+Model status        : Optimal
+Simplex   iterations: 7
+Objective value     :  1.8784867356e+09
+P-D objective error :  1.2692055500e-16
+HiGHS run time      :          0.20
+LP   has 15582 rows; 10752 cols; 37754 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Solving LP without presolve, or with basis, or unconstrained
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0    -1.2748286066e+01 Ph1: 246(801.702); Du: 205(12.7483) 0s
+         24     1.8813588447e+09 Pr: 0(0); Du: 0(1.29489e-10) 0s
+Model status        : Optimal
+Simplex   iterations: 24
+Objective value     :  1.8813588447e+09
+P-D objective error :  6.3363398138e-17
+HiGHS run time      :          0.22
+LP   has 15582 rows; 10752 cols; 37754 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Solving LP without presolve, or with basis, or unconstrained
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0    -1.8821123594e+02 Ph1: 22(29.6098); Du: 8(188.211) 0s
+         17     1.8862118397e+09 Pr: 0(0); Du: 0(6.46878e-11) 0s
+Model status        : Optimal
+Simplex   iterations: 17
+Objective value     :  1.8862118397e+09
+P-D objective error :  1.8960111533e-16
+HiGHS run time      :          0.25
+LP   has 15582 rows; 10752 cols; 37754 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Solving LP without presolve, or with basis, or unconstrained
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0    -1.8821123594e+02 Ph1: 22(29.6098); Du: 8(188.211) 0s
+        283     1.8979437709e+09 Pr: 0(0) 0s
+Model status        : Optimal
+Simplex   iterations: 283
+Objective value     :  1.8979437709e+09
+P-D objective error :  2.5123882245e-16
+HiGHS run time      :          0.34
+LP   has 15582 rows; 10752 cols; 37754 nonzeros
+Coefficient ranges:
+  Matrix [7e-04, 4e+03]
+  Cost   [4e+03, 4e+05]
+  Bound  [0e+00, 0e+00]
+  RHS    [6e+01, 3e+07]
+Solving LP without presolve, or with basis, or unconstrained
+Using EKK dual simplex solver - serial
+  Iteration        Objective     Infeasibilities num(sum)
+          0    -6.7618105433e+04 Ph1: 308(1172.64); Du: 318(67618.1) 0s
+         79     1.9163828907e+09 Pr: 0(0); Du: 0(9.28893e-11) 0s
+Model status        : Optimal
+Simplex   iterations: 79
+Objective value     :  1.9163828907e+09
+P-D objective error :  1.2441072199e-16
+HiGHS run time      :          0.38

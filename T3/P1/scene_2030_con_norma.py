@@ -579,53 +579,64 @@ def get_emisiones_expression(m):
                 suma_emisiones += (m.E[i, b] / m.eficiencia[i]) * m.factor_emision_CO2[i]
     return suma_emisiones
 
-# --- INICIO DEL LOOP ITERATIVO ---
-print("\n--- INICIANDO EJECUCIÓN ITERATIVA (ESTRATEGIA RECONSTRUCCIÓN) ---")
+# %% [BLOQUE DE EJECUCIÓN Y GENERACIÓN DE TABLAS - PREGUNTA 1]
+
+
+# --- 0. PREPARACIÓN ---
+print("\n--- INICIANDO EJECUCIÓN PARA TABLAS 1.1 a 1.5 ---")
 
 resultados_completos = []
-emisiones_bau_co2 = 0 # Lo calcularemos dinámicamente en la primera vuelta
+emisiones_bau_co2 = 0 
+factor_conversion_2030 = 1 / df_2016_2030 # Para llevar costos de la FO (2016) a 2030
 
+# Función auxiliar para la restricción
+def get_emisiones_expression(m):
+    suma = 0
+    for i in m.I:
+        tec = m.tecnologia[i]
+        if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and m.eficiencia[i] > 0:
+            for b in m.B:
+                suma += (m.E[i, b] / m.eficiencia[i]) * m.factor_emision_CO2[i]
+    return suma
+
+# --- 1. LOOP DE RESOLUCIÓN ---
 for meta in metas:
     print(f"\n>>> Procesando Meta: {meta*100:.0f}%")
     
-    # 1. ELIMINAR LA RESTRICCIÓN DE LA VUELTA ANTERIOR (Si existe)
+    # A. Gestión de la Restricción
     if hasattr(model, 'meta_co2_constraint'):
         model.del_component(model.meta_co2_constraint)
     
-    # 2. DEFINIR EL NUEVO LÍMITE Y CREAR LA RESTRICCIÓN
     if meta == 0.0:
-        # En BAU no ponemos restricción (o ponemos infinito)
-        # Simplemente no agregamos la constraint al modelo, o ponemos una dummy
-        print(f"    Modo BAU: Sin restricción de CO2")
+        print(f"    Modo BAU: Sin restricción activa")
     else:
-        # Calculamos el límite numérico
         limite_actual = emisiones_bau_co2 * (1 - meta)
-        
-        # --- AQUÍ ESTÁ LA MAGIA: CREAMOS LA RESTRICCIÓN NUEVA EXPLÍCITA ---
-        # Expresion de emisiones <= Numero calculado
         model.meta_co2_constraint = pyo.Constraint(expr= get_emisiones_expression(model) <= limite_actual)
-        
-        print(f"    Restricción activa: Emisiones <= {limite_actual:,.2f}")
+        print(f"    Restricción activa: <= {limite_actual:,.2f} ton")
 
-    # 3. RESOLVER
-    results = solver.solve(model) 
+    # B. Resolver
+    results = solver.solve(model)
     
     if results.solver.termination_condition != pyo.TerminationCondition.optimal:
-        print(f"    ⚠️ NO ÓPTIMO para meta {meta}. El sistema no puede reducir tanto.")
-        # Opcional: break o continue dependiendo de lo que quieras
-    
-    # 4. EXTRACCIÓN DE RESULTADOS
-    costo_total_obj = pyo.value(model.obj)
-    
-    # Costo Marginal (Dual)
-    cmg_co2 = 0
-    # Solo intentamos sacar el dual si la restricción existe y la meta no es 0
-    if meta > 0 and hasattr(model, 'meta_co2_constraint') and model.meta_co2_constraint in model.dual:
-        cmg_co2 = model.dual[model.meta_co2_constraint] / df_2016_2030 
+        print(f"    ⚠️ NO ÓPTIMO para meta {meta}")
+        continue 
 
-    # Cálculo detallado de emisiones para guardar
-    emisiones_iter = {'MP': 0, 'SOx': 0, 'NOx': 0, 'CO2': 0}
-    costo_social_iter = 0
+    # C. Extracción de Datos
+    # C.1 Costos del Sistema (Inv + Op + Falla)
+    # Nota: model.obj está descontado al 2016. Lo llevamos a 2030.
+    costo_sistema_2030 = pyo.value(model.obj) * factor_conversion_2030
+    
+    # C.2 Costo Marginal (Dual)
+    cmg_co2 = 0
+    if meta > 0 and hasattr(model, 'meta_co2_constraint') and model.meta_co2_constraint in model.dual:
+        # El dual viene en valor presente (2016), lo llevamos a 2030
+        cmg_co2 = model.dual[model.meta_co2_constraint] * factor_conversion_2030
+
+    # C.3 Desglose de Emisiones y Daños
+    datos_iter = {
+        'Emisiones_CO2': 0, 'Emisiones_MP': 0, 'Emisiones_SOx': 0, 'Emisiones_NOx': 0,
+        'Dano_MP': 0, 'Dano_SOx': 0, 'Dano_NOx': 0
+    }
     
     for i in model.I:
         tec = model.tecnologia[i]
@@ -637,58 +648,132 @@ for meta in metas:
                     
                     # CO2
                     co2_ton = e_comb * model.factor_emision_CO2[i]
-                    emisiones_iter['CO2'] += co2_ton
+                    datos_iter['Emisiones_CO2'] += co2_ton
                     
-                    # Otros
-                    for cont, param_emision, param_costo_soc, param_abatidor in [
+                    # Locales (MP, SOx, NOx)
+                    for cont, param_ems, param_costo, param_abat in [
                         ('MP', model.modelo_emision_MP, model.costo_social_mp, model.abatidor_mp),
                         ('SOx', model.factor_emision_Sox, model.costo_social_sox, model.abatidor_sox),
                         ('NOx', model.factor_emision_Nox, model.costo_social_nox, model.abatidor_nox)
                     ]:
-                        abatidor = param_abatidor[i]
-                        efi_aba = 0
-                        if isinstance(abatidor, str):
-                            tipo_dic = 'MP' if cont == 'MP' else cont
-                            if abatidor in dic_equipo[tipo_dic]:
-                                efi_aba = dic_equipo[tipo_dic][abatidor]['Eficiencia_(p.u.)']
+                        # Eficiencia abatidor
+                        abat_nom = param_abat[i]
+                        efi = 0
+                        if isinstance(abat_nom, str):
+                            key = 'MP' if cont == 'MP' else cont
+                            if abat_nom in dic_equipo[key]:
+                                efi = dic_equipo[key][abat_nom]['Eficiencia_(p.u.)']
                         
-                        emis_ton = e_comb * param_emision[i] * (1 - efi_aba)
-                        emisiones_iter[cont] += emis_ton
-                        costo_social_iter += emis_ton * param_costo_soc[i]
+                        emis = e_comb * param_ems[i] * (1 - efi)
+                        costo = emis * param_costo[i] # $/ton * ton = $
+                        
+                        datos_iter[f'Emisiones_{cont}'] += emis
+                        datos_iter[f'Dano_{cont}'] += costo
 
-    costo_social_co2_iter = emisiones_iter['CO2'] * 50 
-    costo_social_total_iter = costo_social_iter + costo_social_co2_iter
-
-    # Si es BAU, guardamos la referencia para las siguientes vueltas
+    # C.4 Daño CO2 ($50/ton)
+    dano_co2 = datos_iter['Emisiones_CO2'] * 50
+    
+    # Guardar referencia BAU
     if meta == 0.0:
-        emisiones_bau_co2 = emisiones_iter['CO2']
-        print(f"    --> BAU CO2 Calculado y fijado: {emisiones_bau_co2:,.2f} ton")
+        emisiones_bau_co2 = datos_iter['Emisiones_CO2']
 
-    # Guardar
+    # Guardar todo en la lista
     resultados_completos.append({
-        'Meta (%)': meta * 100,
-        'Costo Total Sistema (MMUSD)': costo_total_obj / 1e6,
-        'Costo Marginal CO2 ($/ton)': abs(cmg_co2),
-        'Emisiones CO2 (ton)': emisiones_iter['CO2'],
-        'Emisiones MP (ton)': emisiones_iter['MP'],
-        'Emisiones SOx (ton)': emisiones_iter['SOx'],
-        'Emisiones NOx (ton)': emisiones_iter['NOx'],
-        'Daño Ambiental Total (MMUSD)': costo_social_total_iter / 1e6
+        'Meta': meta,
+        'Costo_Sistema_2030': costo_sistema_2030,
+        'Costo_Marginal': abs(cmg_co2),
+        'Emis_MP': datos_iter['Emisiones_MP'],
+        'Emis_SOx': datos_iter['Emisiones_SOx'],
+        'Emis_NOx': datos_iter['Emisiones_NOx'],
+        'Emis_CO2': datos_iter['Emisiones_CO2'],
+        'Dano_MP': datos_iter['Dano_MP'],
+        'Dano_SOx': datos_iter['Dano_SOx'],
+        'Dano_NOx': datos_iter['Dano_NOx'],
+        'Dano_CO2': dano_co2,
+        'Dano_Total': datos_iter['Dano_MP'] + datos_iter['Dano_SOx'] + datos_iter['Dano_NOx'] + dano_co2
     })
 
 print("--- FIN DEL LOOP ---")
 
-# Generar Excel
-df_resultados = pd.DataFrame(resultados_completos)
-print(df_resultados)
-df_resultados.to_excel("resultados_tarea3_p1_reconstruido.xlsx", index=False)
+# --- 2. GENERACIÓN DE TABLAS (FORMATO PDF) ---
 
-# %%
+df_raw = pd.DataFrame(resultados_completos)
+df_raw['Política (%)'] = (df_raw['Meta'] * 100).astype(int).astype(str) + '%'
 
-df_resultados = pd.DataFrame(resultados_completos)
-print(df_resultados)
+# TABLA 1.1: Emisiones no mitigadas [Miles de Ton] [cite: 304]
+t1_1 = pd.DataFrame()
+t1_1['Política (%)'] = df_raw['Política (%)']
+t1_1['Emisiones MP (Miles Ton)'] = df_raw['Emis_MP'] / 1000
+t1_1['Emisiones SOx (Miles Ton)'] = df_raw['Emis_SOx'] / 1000
+t1_1['Emisiones NOx (Miles Ton)'] = df_raw['Emis_NOx'] / 1000
+t1_1['Emisiones CO2 (Miles Ton)'] = df_raw['Emis_CO2'] / 1000
 
-# Exportar a Excel para copiar y pegar en la Tarea
-df_resultados.to_excel("resultados_tarea3_p1.xlsx", index=False)
+# TABLA 1.2: Costo anual de mitigación [cite: 309]
+costo_bau = df_raw.loc[0, 'Costo_Sistema_2030']
+t1_2 = pd.DataFrame()
+t1_2['Política (%)'] = df_raw['Política (%)']
+t1_2['Costo (1) [US$]'] = df_raw['Costo_Sistema_2030']
+t1_2['Costos solo por Mitigación (2) [US$]'] = df_raw['Costo_Sistema_2030'] - costo_bau
 
-# %%
+# TABLA 1.3: Daño ambiental y climático [cite: 314]
+t1_3 = pd.DataFrame()
+t1_3['Política (%)'] = df_raw['Política (%)']
+t1_3['Daño MP [US$]'] = df_raw['Dano_MP']
+t1_3['Daño SOx [US$]'] = df_raw['Dano_SOx']
+t1_3['Daño NOx [US$]'] = df_raw['Dano_NOx']
+t1_3['Daño CO2 [US$]'] = df_raw['Dano_CO2']
+t1_3['Daño (3) [US$]'] = df_raw['Dano_Total']
+
+# TABLA 1.4: Costos totales [cite: 319]
+t1_4 = pd.DataFrame()
+t1_4['Política (%)'] = df_raw['Política (%)']
+t1_4['Costo (4) [US$]'] = t1_2['Costo (1) [US$]'] # Es el mismo
+t1_4['Daño (5) [US$]'] = t1_3['Daño (3) [US$]']   # Es el mismo
+t1_4['Total [US$]'] = t1_4['Costo (4) [US$]'] + t1_4['Daño (5) [US$]']
+
+# TABLA 1.5: Costos medios y marginales [cite: 324]
+t1_5 = pd.DataFrame()
+t1_5['Política (%)'] = df_raw['Política (%)']
+
+# Calculos incrementales (Fila actual - Fila anterior)
+# Mitigación incremental = Emisiones CO2 Anterior - Emisiones CO2 Actual
+emis_co2 = df_raw['Emis_CO2']
+mitigacion_inc = -emis_co2.diff() # Negativo porque al bajar meta, bajamos emisiones
+mitigacion_inc[0] = 0 # BAU no mitiga respecto a nada anterior en la tabla
+
+# Costo Incremental = Costo Actual - Costo Anterior
+costo_sys = df_raw['Costo_Sistema_2030']
+costo_inc = costo_sys.diff()
+costo_inc[0] = 0
+
+t1_5['Mitigación Incremental (6) [Miles Ton]'] = mitigacion_inc / 1000
+t1_5['Costo Incremental (7) [US$]'] = costo_inc
+
+# Costo Medio Incremental ($ / Ton) = ($ Incremental) / (Ton Mitigadas)
+# Ojo: Ton Mitigadas = Miles Ton * 1000
+mitigacion_ton = mitigacion_inc # ya está en ton
+# Evitamos división por cero en la primera fila
+t1_5['Costo Medio Incremental [US$/Ton]'] = costo_inc / mitigacion_ton
+t1_5.loc[0, 'Costo Medio Incremental [US$/Ton]'] = 0
+
+t1_5['Costo Marginal [US$/Ton]'] = df_raw['Costo_Marginal']
+
+# --- 3. EXPORTACIÓN A EXCEL (Multi-hoja) ---
+archivo_salida = "Tablas_Tarea3_Pregunta1.xlsx"
+with pd.ExcelWriter(archivo_salida) as writer:
+    t1_1.to_excel(writer, sheet_name='Tabla 1.1', index=False)
+    t1_2.to_excel(writer, sheet_name='Tabla 1.2', index=False)
+    t1_3.to_excel(writer, sheet_name='Tabla 1.3', index=False)
+    t1_4.to_excel(writer, sheet_name='Tabla 1.4', index=False)
+    t1_5.to_excel(writer, sheet_name='Tabla 1.5', index=False)
+
+print("\n" + "="*60)
+print(f"✅ ¡LISTO! Se ha generado el archivo '{archivo_salida}'")
+print("   Contiene las 5 tablas exactas pedidas en el PDF.")
+print("="*60)
+
+# Imprimir vista previa en consola
+print("\n--- Vista Previa Tabla 1.1 (Emisiones) ---")
+print(t1_1)
+print("\n--- Vista Previa Tabla 1.5 (Costos Medios/Marginales) ---")
+print(t1_5)

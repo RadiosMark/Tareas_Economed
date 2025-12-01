@@ -7,21 +7,27 @@ from pyomo.opt import SolverFactory
 from collections import defaultdict
 import math
 
-# Parámetros de configuración
+# --- 1. CONFIGURACIÓN Y DATOS ---
+print("--- INICIANDO MODELO PREGUNTA 2 (IMPUESTOS PIGOUVIANOS) ---")
+
 tolerancia = 0.00001
 perdida = 0.04
+tasa_descuento = 0.1
+year = 2030 - 2016
+# Factor para llevar costos de 2016 (FO) a 2030 (Tablas)
+r_df = 0.01 # Tasa social de descuento usada en el enunciado anterior, ajusta si es distinta
+factor_conversion_2030 = (1 + r_df)**year 
+# Nota: En tu script original usabas df_2016_2030 = 1 / (1+r)**n.
+# Para reportar en USD 2030, debemos multiplicar por (1+r)^n.
+df_2016_2030_inv = 1 / factor_conversion_2030 # Factor descuento para la FO
 
-# Tipos de Centrales
 t_centrales = ['biomasa', 'carbon','cc-gnl', 'petroleo_diesel', 'hidro', 'minihidro','eolica','solar', 'geotermia']
-t_ernc = ['eolica','solar', 'geotermia','minihidro','hidro' ]
 
-# --- Carga de Datos (Igual al anterior) ---
+# Carga de Abatidores
 df_equipo_mp = pd.read_csv('abatidores/equipo_mp.csv').fillna(0)
 equipo_mp = df_equipo_mp.set_index(['Equipo_MP'])
-
 df_equipo_nox = pd.read_csv('abatidores/equipo_nox.csv').fillna(0)
 equipo_nox = df_equipo_nox.set_index(['Equipo_NOx'])
-
 df_equipo_sox = pd.read_csv('abatidores/equipo_sox.csv').fillna(0)
 equipo_sox = df_equipo_sox.set_index(['Equipo_SOx'])
 
@@ -31,8 +37,8 @@ dic_equipo = {'MP':equipo_mp.to_dict(orient='index'),
 
 dispnibilidad_hidro = [0.8215,0.6297,0.561]
 costo_falla = 500  # $/MWh
-year = 2030 - 2016
 
+# Funciones de carga
 def excel_range_to_df(path, sheet='existentes', cell_range='E7:AB2695', header=None, engine='openpyxl'):
     m = re.match(r'^([A-Z]+)(\d+):([A-Z]+)(\d+)$', cell_range.upper())
     if not m: raise ValueError("Rango debe tener formato 'E7:AB2695'")
@@ -55,13 +61,14 @@ def fd_hidro(bloque):
 def anualidad(r, n): 
     return r / (1 - (1 + r)**(-n))
 
+# Carga Excel
 excel_path = 'datos_t2.xlsx'
 df_existentes = excel_range_to_df(excel_path, sheet='existentes', cell_range='E7:AB2695', header=0)
 
 CONJ = df_existentes.set_index('id_combinacion').to_dict(orient='index')
 CONJ_C = df_existentes['id_centralcomb'].unique().tolist()
 
-# --- Preparación para Pyomo ---
+# Mapeos
 MAPEO_C_a_I = defaultdict(list)
 for i, data in CONJ.items():
     c = data['id_centralcomb']
@@ -73,16 +80,15 @@ dic_bloques = {'bloque_1': {'duracion': 1200 , 'demanda' : 10233.87729},
                'bloque_3': {'duracion': 3408 , 'demanda' : 6297.872136}}
 
 central_falla = 225
-tasa_descuento = 0.1
 
-# --- Modelo Pyomo ---
+# --- 2. MODELO PYOMO ---
 model = pyo.ConcreteModel(name="Modelo_Eficiente_P2")
 
 model.I = pyo.Set(initialize=CONJ.keys())
 model.C = pyo.Set(initialize=CONJ_C)
 model.B = pyo.Set(initialize=['bloque_1','bloque_2','bloque_3'])
 
-# --- Parámetros ---
+# Parámetros
 model.tecnologia = pyo.Param(model.I, initialize=lambda m, i: obtener_tecnologia(CONJ[i]['Central']))
 model.potencia_neta = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['potencia_neta(MW)'])
 model.potencia_max = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['Restricciones_max(MW)'])
@@ -101,20 +107,13 @@ model.costo_social_sox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_
 model.costo_social_nox = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Nox($/ton)'])
 model.costo_social_co2 = pyo.Param(model.I, initialize=lambda m, i: CONJ[i]['CS_Co2($/ton)'])
 
-# --- Conversión de Unidades ---
+# Conversión Factores Emisión
 poder_calorifico = {'carbon': 1/132.3056959, 'petroleo_diesel': 1/79.6808152, 'cc-gnl': 1/61.96031117}
 
 def convertir_unidades(tec, valor_kg_ton):
     cal_val = poder_calorifico.get(tec)
     if cal_val is None or math.isnan(valor_kg_ton): return 0
     return (valor_kg_ton / 1000) / cal_val
-
-emision_descontrolada = defaultdict(dict)
-for c in model.C:
-    primer_i = MAPEO_C_a_I[c][0] 
-    tec = model.tecnologia[primer_i]
-    for cont, col in [('NOx','Nox'),('SOx','Sox'),('MP','MP'),('CO2','CO2')]:
-        emision_descontrolada[c][cont] = convertir_unidades(tec, CONJ[primer_i][f'ED_{col}(kg/Mg)'])
 
 def cargar_factor_emision(m, i, cont_largo):
     tec = m.tecnologia[i]
@@ -125,11 +124,11 @@ model.factor_emision_Sox = pyo.Param(model.I, initialize=lambda m, i: cargar_fac
 model.modelo_emision_MP = pyo.Param(model.I, initialize=lambda m, i: cargar_factor_emision(m, i, 'MP'))
 model.factor_emision_CO2 = pyo.Param(model.I, initialize=lambda m, i: cargar_factor_emision(m, i, 'CO2'))
 
-# --- Variables ---
+# Variables
 model.P = pyo.Var(model.I, within=pyo.NonNegativeReals)
 model.E = pyo.Var(model.I, model.B, within=pyo.NonNegativeReals)
 
-# --- Restricciones Técnicas (Se mantienen igual) ---
+# Restricciones
 def balance_demanda(m,b):
     generacion_total = sum(m.E[i,b] for i in m.I)
     return generacion_total* (1000/(1+perdida)) >= m.param_bloques[b]['demanda']* m.param_bloques[b]['duracion']
@@ -156,11 +155,8 @@ model.potencia_existente_constraint = pyo.Constraint(model.C, rule=potencia_exis
 model.disponibilidad_tecnica_constraint = pyo.Constraint(model.I, model.B, rule=disponibilidad_tecnica)
 model.capacidad_por_central_constraint = pyo.Constraint(model.C, rule=capacidad_por_central)
 
-# ### [MODIFICACIÓN P2] ELIMINACIÓN DE NORMAS ###
+# --- 3. FUNCIONES DE COSTO (INCLUYENDO SOCIAL) ---
 
-# --- Función Objetivo ---
-
-# Costo Operación Privado
 def costo_operacion(m):
     total_variable = 0
     for b in m.B:
@@ -168,36 +164,26 @@ def costo_operacion(m):
             if m.tecnologia[i] == 'central_falla':
                 total_variable += m.E[i, b] * 1000 * costo_falla
                 continue
-            
             costo_var = m.costo_variable[i]
             costo_abat = 0
-            
-            # Sumar costo variable de abatidores si existen
             if m.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl']:
                 for tipo, param_abat in [('MP', m.abatidor_mp), ('SOx', m.abatidor_sox), ('NOx', m.abatidor_nox)]:
                     abat_nombre = param_abat[i]
                     if isinstance(abat_nombre, str):
                         costo_abat += dic_equipo[tipo][abat_nombre]['Costo_variable_($/MWh)']
-            
             total_variable += m.E[i, b] * 1000 * (costo_var + costo_abat)
     return total_variable
 
-# Costo Fijo Privado
 def costo_fijo(m):
     total_fijo = 0.0
     vida_abat, r_abat = 30, 0.1
     anual_abat = anualidad(r_abat, vida_abat)
-
     for i in m.I:
         pot_kw = m.P[i] * 1000
         costo_kw_anual = 0.0
-        
-        # Inversión central nueva
         if math.isnan(m.potencia_neta[i]):
             if m.costo_fijo[i] > 0 and m.vida_util[i] > 0:
                 costo_kw_anual += m.costo_fijo[i] * anualidad(tasa_descuento, m.vida_util[i])
-        
-        # Inversión abatidores
         if m.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl']:
             inv_abat = 0
             for tipo, param_abat in [('MP', m.abatidor_mp), ('SOx', m.abatidor_sox), ('NOx', m.abatidor_nox)]:
@@ -206,115 +192,127 @@ def costo_fijo(m):
                     inv_abat += dic_equipo[tipo][abat_nombre]['Inversión_($/kW)']
             if inv_abat > 0:
                 costo_kw_anual += inv_abat * anual_abat
-        
         total_fijo += pot_kw * costo_kw_anual
     return total_fijo
 
-# ### COSTO SOCIAL INTERNALIZADO ###
-# Impuesto al CO2 ($50/ton) y los costos sociales locales.
 def costo_social_total(m):
     total_social = 0
-    TAX_CO2 = 50.0  # [cite: 190] Carbon Tax igual al costo social
-    
+    TAX_CO2 = 50.0 
     for i in m.I:
         tec = m.tecnologia[i]
         if tec in ['carbon', 'petroleo_diesel', 'cc-gnl'] and m.eficiencia[i] > 0:
             for b in m.B:
-                # Energía combustible en GWh
                 e_comb = m.E[i, b] / m.eficiencia[i]
-                
-                # 1. Costo por CO2
-                emis_co2 = e_comb * m.factor_emision_CO2[i]
-                total_social += emis_co2 * TAX_CO2
-                
-                # 2. Costo por Contaminantes Locales (MP, SOx, NOx)
-                # Debemos considerar la reducción si hay abatidor instalado
-                for cont, param_emision, param_costo_soc, param_abatidor in [
+                # CO2 (Impuesto)
+                total_social += e_comb * m.factor_emision_CO2[i] * TAX_CO2
+                # Locales
+                for cont, param_ems, param_costo, param_abat in [
                     ('MP', m.modelo_emision_MP, m.costo_social_mp, m.abatidor_mp),
                     ('SOx', m.factor_emision_Sox, m.costo_social_sox, m.abatidor_sox),
                     ('NOx', m.factor_emision_Nox, m.costo_social_nox, m.abatidor_nox)
                 ]:
-                    abat_nombre = param_abatidor[i]
-                    efi_aba = 0.0
-                    if isinstance(abat_nombre, str):
-                        tipo_dic = 'MP' if cont == 'MP' else cont
-                        if abat_nombre in dic_equipo[tipo_dic]:
-                            efi_aba = dic_equipo[tipo_dic][abat_nombre]['Eficiencia_(p.u.)']
-                    
-                    emis_ton = e_comb * param_emision[i] * (1 - efi_aba)
-                    total_social += emis_ton * param_costo_soc[i]
-                    
+                    abat_nom = param_abat[i]
+                    efi = 0
+                    if isinstance(abat_nom, str):
+                        key = 'MP' if cont == 'MP' else cont
+                        if abat_nom in dic_equipo[key]:
+                            efi = dic_equipo[key][abat_nom]['Eficiencia_(p.u.)']
+                    total_social += e_comb * param_ems[i] * (1 - efi) * param_costo[i]
     return total_social
 
-# Factor de descuento
-r_df = 0.01
-df_2016_2030 = 1 / (1 + r_df)**year
-
-
+# Función Objetivo P2: Privado + Social
 def objective_rule_social(m):
-    return df_2016_2030 * (costo_operacion(m) + costo_fijo(m) + costo_social_total(m))
+    return df_2016_2030_inv * (costo_operacion(m) + costo_fijo(m) + costo_social_total(m))
 
 model.obj = pyo.Objective(rule=objective_rule_social, sense=pyo.minimize)
 
-# %%
-# --- RESOLUCIÓN ---
-
+# --- 4. RESOLUCIÓN ---
 solver = pyo.SolverFactory('highs')
-# solver.options["log_file"] = ... 
 solver.options['mip_rel_gap'] = tolerancia
-
-print(">>> Resolviendo Pregunta 2: Política Eficiente (Impuestos Pigouvianos)...")
+print(">>> Resolviendo...")
 results = solver.solve(model, tee=True)
 
-# %%
-# --- REPORTE DE RESULTADOS (TABLAS 2.1 y 2.2) ---
+# %% 
+# --- 5. GENERACIÓN DE TABLAS (FORMATO PDF) ---
 
 if results.solver.termination_condition == pyo.TerminationCondition.optimal:
     print("\n✅ Solución Óptima encontrada.")
     
-    # Extraemos los valores óptimos
-    costo_privado_total = pyo.value(df_2016_2030 * (costo_operacion(model) + costo_fijo(model)))
-    costo_social_total_val = pyo.value(df_2016_2030 * costo_social_total(model))
-    costo_generalizado = pyo.value(model.obj)
+    # --- RESULTADOS ÓPTIMOS P2 ---
+    # Costos en valor presente 2016
+    opt_cp_vp = pyo.value(costo_operacion(model) + costo_fijo(model))
+    opt_cs_vp = pyo.value(costo_social_total(model))
     
-    # Calculamos Emisiones Totales de CO2
-    emisiones_co2 = 0
+    # Llevamos a 2030 para las tablas
+    opt_costo_privado_2030 = opt_cp_vp * factor_conversion_2030
+    opt_dano_ambiental_2030 = opt_cs_vp * factor_conversion_2030
+    
+    # Emisiones CO2
+    opt_emisiones_co2 = 0
     for i in model.I:
         if model.tecnologia[i] in ['carbon', 'petroleo_diesel', 'cc-gnl'] and model.eficiencia[i] > 0:
             for b in model.B:
-                e_comb = pyo.value(model.E[i, b]) / model.eficiencia[i]
-                emisiones_co2 += e_comb * model.factor_emision_CO2[i]
+                opt_emisiones_co2 += (pyo.value(model.E[i, b]) / model.eficiencia[i]) * model.factor_emision_CO2[i]
 
-    print("\n" + "="*50)
-    print("RESULTADOS PREGUNTA 2 - AÑO 2030")
-    print("="*50)
+    # -------------------------------------------------------------------------
+    # Valores de BAU tabla 1.1 a 1.3 escenario 0%
     
-    # Datos para Tabla 2.1 (Emisiones Mitigadas)
-    # Debes comparar esto con el BAU (Pregunta 1, meta 0%)
-    print(f"1. Emisiones CO2 Totales: {emisiones_co2:,.2f} ton")
+    BAU_EMISIONES_CO2 = 21290785.350555  
+    BAU_COSTO_PRIVADO = 2156143454       
+    BAU_DANO_AMBIENTAL = 1257493547     
     
-    # Datos para Tabla 2.2 (Costos Totales)
-    print(f"\n2. Desglose de Costos (Valor Presente 2016 -> convertir a 2030 dividiendo por factor si es necesario):")
-    print(f"   - Costo Privado (Inv + Op): {costo_privado_total/1e6:,.2f} MMUSD")
-    print(f"   - Costo Social (Daño):      {costo_social_total_val/1e6:,.2f} MMUSD")
-    print(f"   - Costo TOTAL (Objetivo):   {costo_generalizado/1e6:,.2f} MMUSD")
-    
-    print("\nNOTA: Para las tablas, recuerda que los valores monetarios suelen pedirse en USD del año 2030.")
-    print(f"      Multiplica estos valores por (1+r)^{year} o usa los valores sin descontar si el script ya lo hace.")
-    print("="*50)
+    print("\n--- DATOS DE ENTRADA BAU (Verificar en script) ---")
+    print(f"BAU Emisiones CO2: {BAU_EMISIONES_CO2:,.2f}")
+    print(f"BAU Costo Privado: {BAU_COSTO_PRIVADO:,.2f}")
+    print(f"BAU Daño Ambiental:{BAU_DANO_AMBIENTAL:,.2f}")
+    # -------------------------------------------------------------------------
 
-    # Exportar a un mini Excel
-    data_p2 = {
-        'Concepto': ['Emisiones CO2 (ton)', 'Costo Privado (MMUSD)', 'Costo Social (MMUSD)', 'Costo Total (MMUSD)'],
-        'Valor (2030)': [
-            emisiones_co2,
-            (costo_privado_total / df_2016_2030) / 1e6, # Llevado a 2030
-            (costo_social_total_val / df_2016_2030) / 1e6,
-            (costo_generalizado / df_2016_2030) / 1e6
-        ]
-    }
-    pd.DataFrame(data_p2).to_excel("resultados_tarea3_p2.xlsx", index=False)
-    print("📄 Resultados exportados a 'resultados_tarea3_p2.xlsx'")
+    # CALCULOS TABLAS
+    # Tabla 2.1
+    mitigacion_co2_ton = BAU_EMISIONES_CO2 - opt_emisiones_co2
+    mitigacion_co2_pct = (mitigacion_co2_ton / BAU_EMISIONES_CO2) * 100 if BAU_EMISIONES_CO2 > 0 else 0
+    
+    # Tabla 2.2
+    bau_total = BAU_COSTO_PRIVADO + BAU_DANO_AMBIENTAL
+    opt_total = opt_costo_privado_2030 + opt_dano_ambiental_2030
+    
+    dif_privado = opt_costo_privado_2030 - BAU_COSTO_PRIVADO
+    dif_dano = opt_dano_ambiental_2030 - BAU_DANO_AMBIENTAL
+    dif_total = opt_total - bau_total
+
+    # --- CONSTRUCCIÓN DATAFRAMES ---
+    
+    # TABLA 2.1: Mitigación Política Óptima
+    t2_1 = pd.DataFrame({
+        'Política': ['Escenario BAU (Base)', 'Política Óptima'],
+        'Emisiones CO2 [Miles Ton]': [BAU_EMISIONES_CO2/1000, opt_emisiones_co2/1000],
+        'Mitigación CO2 [%]': ['', f"{mitigacion_co2_pct:.1f}%"],
+        'Mitigación CO2 [Miles Ton]': ['', mitigacion_co2_ton/1000]
+    })
+    
+    # TABLA 2.2: Costo Anual Política Óptima
+    t2_2 = pd.DataFrame({
+        'Política': ['Escenario BAU (Base)', 'Política Óptima', 'Diferencia'],
+        'Costo (1) [US$]': [BAU_COSTO_PRIVADO, opt_costo_privado_2030, dif_privado],
+        'Daño Ambiental (2) [US$]': [BAU_DANO_AMBIENTAL, opt_dano_ambiental_2030, dif_dano],
+        'Total [US$]': [bau_total, opt_total, dif_total]
+    })
+
+    # Exportación
+    archivo_salida = "Tablas_Tarea3_Pregunta2.xlsx"
+    with pd.ExcelWriter(archivo_salida) as writer:
+        t2_1.to_excel(writer, sheet_name='Tabla 2.1', index=False)
+        t2_2.to_excel(writer, sheet_name='Tabla 2.2', index=False)
+    
+    print("\n" + "="*60)
+    print(f"✅ ¡LISTO! Se ha generado el archivo '{archivo_salida}'")
+    print("   Contiene las tablas 2.1 y 2.2 con el formato del PDF.")
+    print("="*60)
+    
+    print("\nVista Previa Tabla 2.1:")
+    print(t2_1)
+    print("\nVista Previa Tabla 2.2:")
+    print(t2_2)
 
 else:
     print("❌ No se encontró solución óptima.")
